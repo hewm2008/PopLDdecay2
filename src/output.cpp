@@ -50,7 +50,13 @@ int write_stat(const std::string& path, const std::vector<Bin>& bins,
         }
     }
 
-    bgzf_close(fp);
+    // bgzf_close() flushes the last block; a failure there means the file on
+    // disk is short, so it must not be left behind as if it were complete.
+    if (bgzf_close(fp) != 0) {
+        std::cerr << "write OUT File error: " << path << std::endl;
+        std::remove(path.c_str());
+        return 0;
+    }
     return 1;
 }
 
@@ -123,7 +129,11 @@ int write_hist_stat(const std::string& path, int max_dist_bp,
         }
     }
 
-    bgzf_close(fp);
+    if (bgzf_close(fp) != 0) {
+        std::cerr << "write OUT File error: " << path << std::endl;
+        std::remove(path.c_str());
+        return 0;
+    }
     return 1;
 }
 

@@ -1,0 +1,100 @@
+# PopLDdecay2 expected-output fixtures -- CI regression gate.
+#
+# Regenerate: bash RunTest/06.Verify/make_fixtures.sh
+# Verify   : bash RunTest/06.Verify/step1_checkOutput.sh   (CI; no 3.45 needed)
+#
+# PopLDdecay 3.45 is not redistributable, so CI cannot re-run it. These
+# digests come from the current implementation, whose byte-for-byte equality
+# with PopLDdecay 3.45 over the same case matrix is verified separately by
+# golden_diff.sh. Regenerate the fixtures whenever an output format
+# changes *intentionally*, and record why in the commit message.
+#
+# case_id	kind	argv	output_suffix	sha256
+input/sim.vcf	stat	-InVCF @WORK@/sim.vcf -OutStat @OUT@ -MaxDist 100	stat.gz	2881fc0ed4d005c8ee2d7c38062094caaa12c289275496001d586228936091c4
+input/sim.vcf.gz	stat	-InVCF @WORK@/sim.vcf.gz -OutStat @OUT@ -MaxDist 100	stat.gz	2881fc0ed4d005c8ee2d7c38062094caaa12c289275496001d586228936091c4
+input/sim.bgz.vcf.gz	stat	-InVCF @WORK@/sim.bgz.vcf.gz -OutStat @OUT@ -MaxDist 100	stat.gz	2881fc0ed4d005c8ee2d7c38062094caaa12c289275496001d586228936091c4
+input/sim_phased.vcf.gz	stat	-InVCF @WORK@/sim_phased.vcf.gz -OutStat @OUT@ -MaxDist 100	stat.gz	0248e8d7feab87144a44d2243b2842a4a8d618074e25d7946f0abc087009a768
+param/MAF_0.1	stat	-InVCF @WORK@/sim.vcf.gz -OutStat @OUT@ -MAF 0.1	stat.gz	fb091104d56b7adad46b0721a16343a77bd6b9f50915d0c7665472fa2b7ad144
+param/Het_0.5	stat	-InVCF @WORK@/sim.vcf.gz -OutStat @OUT@ -Het 0.5	stat.gz	bfd0ba151f5747fe484b5fd57f876cda6f3a99362494cfc11b52473f20f8b410
+param/Miss_0.1	stat	-InVCF @WORK@/sim.vcf.gz -OutStat @OUT@ -Miss 0.1	stat.gz	cf66d90b7796317f6caee446a063bb92b0e864973c599fc08278f027cff3930d
+param/MaxDist_50	stat	-InVCF @WORK@/sim.vcf.gz -OutStat @OUT@ -MaxDist 50	stat.gz	bbc4fe2808e888fcd090fe05c8a98b54cbfdbe2dfa40c35b76b85f763928ce2f
+param/combo	stat	-InVCF @WORK@/sim.vcf.gz -OutStat @OUT@ -MAF 0.05 -Het 0.8 -Miss 0.2 -MaxDist 200	stat.gz	b1bcd2ab4313528614e2c5984fd098c4bfb1c5678306e3778d4909a3ded94705
+outtype/0/stat	stat	-InVCF @WORK@/sim.vcf.gz -OutStat @OUT@ -OutType 0 -MaxDist 100	stat.gz	84f7167f9a064ac780bb8a838d80309b20ff6633f3d590a5199b75ea41a6fdbf
+outtype/1/stat	stat	-InVCF @WORK@/sim.vcf.gz -OutStat @OUT@ -OutType 1 -MaxDist 100	stat.gz	2881fc0ed4d005c8ee2d7c38062094caaa12c289275496001d586228936091c4
+outtype/2/stat	stat	-InVCF @WORK@/sim.vcf.gz -OutStat @OUT@ -OutType 2 -MaxDist 100	stat.gz	06f935ed2f0a9580e28626d31c6d452796044712205c4603f91b526ff8d3ac6e
+outtype/3/stat	stat	-InVCF @WORK@/sim.vcf.gz -OutStat @OUT@ -OutType 3 -MaxDist 100	stat.gz	8677cba15080b348d114a1fac2c11b55a00d9dcd1801cac91f164a5782100e52
+outtype/4/stat	stat	-InVCF @WORK@/sim.vcf.gz -OutStat @OUT@ -OutType 4 -MaxDist 100	stat.gz	ce1d7da27bdd0c9d039404bd60e39b52c33c9d15def2e2180beeae9c48563f61
+outtype/5/stat	stat	-InVCF @WORK@/sim.vcf.gz -OutStat @OUT@ -OutType 5 -MaxDist 100	stat.gz	d7df05c377077a6f2cc4483a34e900be601b66fe3b28792334c377cdabcd5362
+outtype/6/stat	stat	-InVCF @WORK@/sim.vcf.gz -OutStat @OUT@ -OutType 6 -MaxDist 100	stat.gz	2881fc0ed4d005c8ee2d7c38062094caaa12c289275496001d586228936091c4
+outtype/7/stat	stat	-InVCF @WORK@/sim.vcf.gz -OutStat @OUT@ -OutType 7 -MaxDist 100	stat.gz	2881fc0ed4d005c8ee2d7c38062094caaa12c289275496001d586228936091c4
+outtype/8/stat	stat	-InVCF @WORK@/sim.vcf.gz -OutStat @OUT@ -OutType 8 -MaxDist 100	stat.gz	2881fc0ed4d005c8ee2d7c38062094caaa12c289275496001d586228936091c4
+outtype/3/LD	raw	-InVCF @WORK@/sim.vcf.gz -OutStat @OUT@ -OutType 3 -MaxDist 50	LD.gz	fa564673335fb2d6939c0cffc432235207bb1cc55e6e0d04ae86e678fbbd3ae6
+outtype/6/LD	raw	-InVCF @WORK@/sim.vcf.gz -OutStat @OUT@ -OutType 6 -MaxDist 50	LD.gz	0b8471e886ea51f53226c4cc3071d45cc734a0405bab8adec5cf36906fe4eeca
+outtype/7/LD	raw	-InVCF @WORK@/sim.vcf.gz -OutStat @OUT@ -OutType 7 -MaxDist 50	LD.gz	90a65611ef0b71958a8794a3c489da811ed912d5eadc54df1ad78505d327d899
+outtype/8/LD	raw	-InVCF @WORK@/sim.vcf.gz -OutStat @OUT@ -OutType 8 -MaxDist 50	LD.gz	83a9c0a46855c8d84faaf713f2809d706449b36dbfe5cd1841c1c59b96fc753e
+phased/outtype/1	stat	-InVCF @WORK@/sim_phased.vcf.gz -OutStat @OUT@ -OutType 1 -MaxDist 100	stat.gz	0248e8d7feab87144a44d2243b2842a4a8d618074e25d7946f0abc087009a768
+phased/outtype/2	stat	-InVCF @WORK@/sim_phased.vcf.gz -OutStat @OUT@ -OutType 2 -MaxDist 100	stat.gz	2c6625b1029524c76761bd9c471578c817c1f38513148ee61ae6803602d043aa
+phased/outtype/3	stat	-InVCF @WORK@/sim_phased.vcf.gz -OutStat @OUT@ -OutType 3 -MaxDist 100	stat.gz	eeef235a496bf9ea984381b279bc413b0bba8f9cc21fd1e9286082838c80da02
+phased/outtype/4	stat	-InVCF @WORK@/sim_phased.vcf.gz -OutStat @OUT@ -OutType 4 -MaxDist 100	stat.gz	2ca0d83d65d8fba6b18ec2e379bea2dc32d024c187439ef4977ea77a95b0c2c6
+phased/outtype/8	stat	-InVCF @WORK@/sim_phased.vcf.gz -OutStat @OUT@ -OutType 8 -MaxDist 100	stat.gz	0248e8d7feab87144a44d2243b2842a4a8d618074e25d7946f0abc087009a768
+threads/2	stat	-InVCF @WORK@/sim.bgz.vcf.gz -OutStat @OUT@ -T 2 -MaxDist 100	stat.gz	2881fc0ed4d005c8ee2d7c38062094caaa12c289275496001d586228936091c4
+threads/4	stat	-InVCF @WORK@/sim.bgz.vcf.gz -OutStat @OUT@ -T 4 -MaxDist 100	stat.gz	2881fc0ed4d005c8ee2d7c38062094caaa12c289275496001d586228936091c4
+threads/8	stat	-InVCF @WORK@/sim.bgz.vcf.gz -OutStat @OUT@ -T 8 -MaxDist 100	stat.gz	2881fc0ed4d005c8ee2d7c38062094caaa12c289275496001d586228936091c4
+region/chr1	stat	-InVCF @WORK@/sim.bgz.vcf.gz -OutStat @OUT@ -L chr1 -T 4 -MaxDist 100	stat.gz	2ee2912687860798f0fee73a57a6f041bfe5fd68a45f005147ba5d9a9d682906
+region/chr1_range	stat	-InVCF @WORK@/sim.bgz.vcf.gz -OutStat @OUT@ -L chr1:1-400000 -T 4 -MaxDist 100	stat.gz	e7d7eba797d2dd80aaf89b87478a6ca263b689a48d036f3b32c0a77fa07dafdf
+subpop/30of60	stat	-InVCF @WORK@/sim.vcf.gz -OutStat @OUT@ -SubPop @WORK@/sub30.txt -MaxDist 100	stat.gz	1bf436808fc485e2de0163cbec1558dfc3dfe2a7866c95626b05d561876d9d6e
+subpop/twocol/G1	stat	-InVCF @WORK@/sim.vcf.gz -OutStat @OUT@ -SubPop @WORK@/groups2.txt -MaxDist 100	G1.stat.gz	79fc630bac2315e2a43e6b16f183aa1612c56cb131ad1515afab5b609cf02272
+subpop/twocol/G2	stat	-InVCF @WORK@/sim.vcf.gz -OutStat @OUT@ -SubPop @WORK@/groups2.txt -MaxDist 100	G2.stat.gz	d10650b88222227205beaf520e126ba29b77c929e52aef5824c3353afe8112e1
+filter/vcf	raw	-InVCF @WORK@/sim.vcf.gz -OutStat @OUT@ -OutFilterSNP -MaxDist 100	vcf.filter.gz	738c16e3494f9b375c4c2738b0a2077f8ddf30722e6767545d958a1d400c98e5
+ingenotype/plain	stat	-InGenotype @WORK@/sim.geno.txt -OutStat @OUT@ -MaxDist 100	stat.gz	fbcf8de083b5d6f356070f369180ff0646172972cc5316002d28341800f3b2a3
+ehh/chr1_core	raw	-InVCF @WORK@/sim_ehh.vcf.gz -OutStat @OUT@ -EHH chr1:143767	ehh.gz	40691525e8627f477f613058f9dd4653acc09c284deb8ade306619d937848b7d
+ehh/subpop	raw	-InVCF @WORK@/sim_ehh.vcf.gz -OutStat @OUT@ -EHH chr1:143767 -SubPop @WORK@/sub30.txt	ehh.gz	a8053b232c6227f1d303d10a4ac1b2f7991bb6feb035fa3c5ece208101c9040e
+ehh/outtype8	raw	-InVCF @WORK@/sim_ehh.vcf.gz -OutStat @OUT@ -EHH chr1:143767 -OutType 8	ehh.gz	40691525e8627f477f613058f9dd4653acc09c284deb8ade306619d937848b7d
+ehh/absent_chr	raw	-InVCF @WORK@/sim.vcf.gz -OutStat @OUT@ -EHH chrZZ:700000 -MaxDist 100	ehh.gz	59869db34853933b239f1e2219cf7d431da006aa919635478511fabbfc8849d2
+phased/outtype/0	stat	-InVCF @WORK@/sim_phased.vcf.gz -OutStat @OUT@ -OutType 0 -MaxDist 100	stat.gz	84f7167f9a064ac780bb8a838d80309b20ff6633f3d590a5199b75ea41a6fdbf
+phased/outtype/5	stat	-InVCF @WORK@/sim_phased.vcf.gz -OutStat @OUT@ -OutType 5 -MaxDist 100	stat.gz	1a23c82b7e3d490eda1b42d3650757fcbb66155dcbbb8143db38b1371db6b1df
+phased/outtype/3/LD	raw	-InVCF @WORK@/sim_phased.vcf.gz -OutStat @OUT@ -OutType 3 -MaxDist 50	LD.gz	f79b06d4ec7c7153371b7b36c78a7dd352d327cbab4b53ca73ddb9a9d9b1e6bb
+phased/outtype/6/LD	raw	-InVCF @WORK@/sim_phased.vcf.gz -OutStat @OUT@ -OutType 6 -MaxDist 50	LD.gz	2a7e6f54105fd26b4f5dee184f7927687d2026c1f529358773a269d612b1945f
+phased/outtype/7/LD	raw	-InVCF @WORK@/sim_phased.vcf.gz -OutStat @OUT@ -OutType 7 -MaxDist 50	LD.gz	459ab2ef78a53ebcf4d7b7c0cd7754a81971de80daac28fc3df6ea30e63e2204
+phased/outtype/8/LD	raw	-InVCF @WORK@/sim_phased.vcf.gz -OutStat @OUT@ -OutType 8 -MaxDist 50	LD.gz	0bb025c41b74c2026f86fa9c9724e3f1c4d53b16f45e2a29d9437cfef0d3ff84
+fastpath/outtype/0	stat	-InVCF @WORK@/sim.bgz.vcf.gz -OutStat @OUT@ -OutType 0 -MaxDist 100 -T 4	stat.gz	84f7167f9a064ac780bb8a838d80309b20ff6633f3d590a5199b75ea41a6fdbf
+fastpath/outtype/1	stat	-InVCF @WORK@/sim.bgz.vcf.gz -OutStat @OUT@ -OutType 1 -MaxDist 100 -T 4	stat.gz	2881fc0ed4d005c8ee2d7c38062094caaa12c289275496001d586228936091c4
+fastpath/outtype/2	stat	-InVCF @WORK@/sim.bgz.vcf.gz -OutStat @OUT@ -OutType 2 -MaxDist 100 -T 4	stat.gz	06f935ed2f0a9580e28626d31c6d452796044712205c4603f91b526ff8d3ac6e
+fastpath/outtype/3	stat	-InVCF @WORK@/sim.bgz.vcf.gz -OutStat @OUT@ -OutType 3 -MaxDist 100 -T 4	stat.gz	8677cba15080b348d114a1fac2c11b55a00d9dcd1801cac91f164a5782100e52
+fastpath/outtype/4	stat	-InVCF @WORK@/sim.bgz.vcf.gz -OutStat @OUT@ -OutType 4 -MaxDist 100 -T 4	stat.gz	ce1d7da27bdd0c9d039404bd60e39b52c33c9d15def2e2180beeae9c48563f61
+fastpath/outtype/5	stat	-InVCF @WORK@/sim.bgz.vcf.gz -OutStat @OUT@ -OutType 5 -MaxDist 100 -T 4	stat.gz	d7df05c377077a6f2cc4483a34e900be601b66fe3b28792334c377cdabcd5362
+fastpath/outtype/6	stat	-InVCF @WORK@/sim.bgz.vcf.gz -OutStat @OUT@ -OutType 6 -MaxDist 100 -T 4	stat.gz	2881fc0ed4d005c8ee2d7c38062094caaa12c289275496001d586228936091c4
+fastpath/outtype/7	stat	-InVCF @WORK@/sim.bgz.vcf.gz -OutStat @OUT@ -OutType 7 -MaxDist 100 -T 4	stat.gz	2881fc0ed4d005c8ee2d7c38062094caaa12c289275496001d586228936091c4
+fastpath/outtype/8	stat	-InVCF @WORK@/sim.bgz.vcf.gz -OutStat @OUT@ -OutType 8 -MaxDist 100 -T 4	stat.gz	2881fc0ed4d005c8ee2d7c38062094caaa12c289275496001d586228936091c4
+fastpath/outtype/3/LD	raw	-InVCF @WORK@/sim.bgz.vcf.gz -OutStat @OUT@ -OutType 3 -MaxDist 50 -T 4	LD.gz	fa564673335fb2d6939c0cffc432235207bb1cc55e6e0d04ae86e678fbbd3ae6
+fastpath/outtype/6/LD	raw	-InVCF @WORK@/sim.bgz.vcf.gz -OutStat @OUT@ -OutType 6 -MaxDist 50 -T 4	LD.gz	0b8471e886ea51f53226c4cc3071d45cc734a0405bab8adec5cf36906fe4eeca
+fastpath/outtype/7/LD	raw	-InVCF @WORK@/sim.bgz.vcf.gz -OutStat @OUT@ -OutType 7 -MaxDist 50 -T 4	LD.gz	90a65611ef0b71958a8794a3c489da811ed912d5eadc54df1ad78505d327d899
+fastpath/outtype/8/LD	raw	-InVCF @WORK@/sim.bgz.vcf.gz -OutStat @OUT@ -OutType 8 -MaxDist 50 -T 4	LD.gz	83a9c0a46855c8d84faaf713f2809d706449b36dbfe5cd1841c1c59b96fc753e
+threads/1	stat	-InVCF @WORK@/sim.bgz.vcf.gz -OutStat @OUT@ -T 1 -MaxDist 100	stat.gz	2881fc0ed4d005c8ee2d7c38062094caaa12c289275496001d586228936091c4
+threads/16	stat	-InVCF @WORK@/sim.bgz.vcf.gz -OutStat @OUT@ -T 16 -MaxDist 100	stat.gz	2881fc0ed4d005c8ee2d7c38062094caaa12c289275496001d586228936091c4
+region/bed	stat	-InVCF @WORK@/sim.bgz.vcf.gz -OutStat @OUT@ -L @WORK@/chr1.bed -T 4 -MaxDist 100	stat.gz	e7d7eba797d2dd80aaf89b87478a6ca263b689a48d036f3b32c0a77fa07dafdf
+region/dup	stat	-InVCF @WORK@/sim.bgz.vcf.gz -OutStat @OUT@ -L chr1,chr1 -T 4 -MaxDist 100	stat.gz	2ee2912687860798f0fee73a57a6f041bfe5fd68a45f005147ba5d9a9d682906
+region/absent	stat	-InVCF @WORK@/sim.bgz.vcf.gz -OutStat @OUT@ -L chrZZ -T 4 -MaxDist 100	stat.gz	84f7167f9a064ac780bb8a838d80309b20ff6633f3d590a5199b75ea41a6fdbf
+region/chr1_only_subvcf	stat	-InVCF @WORK@/chr1only.vcf.gz -OutStat @OUT@ -T 4 -MaxDist 100	stat.gz	2ee2912687860798f0fee73a57a6f041bfe5fd68a45f005147ba5d9a9d682906
+edge/undeclared_contig/T1	stat	-InVCF @WORK@/nocontig.vcf.gz -OutStat @OUT@ -T 1 -MaxDist 100	stat.gz	2881fc0ed4d005c8ee2d7c38062094caaa12c289275496001d586228936091c4
+edge/undeclared_contig/T4	stat	-InVCF @WORK@/nocontig.vcf.gz -OutStat @OUT@ -T 4 -MaxDist 100	stat.gz	2881fc0ed4d005c8ee2d7c38062094caaa12c289275496001d586228936091c4
+edge/colon_contig/T1	stat	-InVCF @WORK@/colon.vcf.gz -OutStat @OUT@ -T 1 -MaxDist 100	stat.gz	2ee2912687860798f0fee73a57a6f041bfe5fd68a45f005147ba5d9a9d682906
+edge/colon_contig/T4	stat	-InVCF @WORK@/colon.vcf.gz -OutStat @OUT@ -T 4 -MaxDist 100	stat.gz	2ee2912687860798f0fee73a57a6f041bfe5fd68a45f005147ba5d9a9d682906
+edge/short_gt	stat	-InVCF @WORK@/shortgt.vcf.gz -OutStat @OUT@ -MaxDist 100	stat.gz	5ceb53aac9151969cdcf6341f16de1923de0369b13c8948ab2a103bc5a345c5b
+subpop/indexed	stat	-InVCF @WORK@/sim.bgz.vcf.gz -OutStat @OUT@ -SubPop @WORK@/sub30.txt -T 4 -MaxDist 100	stat.gz	1bf436808fc485e2de0163cbec1558dfc3dfe2a7866c95626b05d561876d9d6e
+subpop/phased	stat	-InVCF @WORK@/sim_phased.vcf.gz -OutStat @OUT@ -SubPop @WORK@/sub30.txt -MaxDist 100	stat.gz	3c4be3c0084dbc2a78d64381ceaf21563109df395aff012e7212c6bf54e5af33
+subpop/repeat/popA	stat	-InVCF @WORK@/sim.vcf.gz -OutStat @OUT@ -SubPop @WORK@/popA.list -SubPop @WORK@/popB.list -T 1 -MaxDist 100	popA.stat.gz	16b88236e1a97b652179a23bc196583cfa4703680c5d17747aad10a45f4c667c
+subpop/repeat/popB	stat	-InVCF @WORK@/sim.vcf.gz -OutStat @OUT@ -SubPop @WORK@/popA.list -SubPop @WORK@/popB.list -T 1 -MaxDist 100	popB.stat.gz	6076ec376fa8dbd7a68be841b6b3d4e90dd8bcdcb4c019f0e709928c586a2885
+ingenotype/gz	stat	-InGenotype @WORK@/sim.geno.plain.gz -OutStat @OUT@ -MaxDist 100	stat.gz	fbcf8de083b5d6f356070f369180ff0646172972cc5316002d28341800f3b2a3
+ingenotype/subpop	stat	-InGenotype @WORK@/sim.geno.hdr.txt -OutStat @OUT@ -SubPop @WORK@/popA.list -MaxDist 100	stat.gz	2be87e93dca42e018ff11fd377781e5659228854e38cda272e9442288c38afb3
+ingenotype/mixed_with_vcf	stat	-InGenotype @WORK@/sim.geno.txt -InVCF @WORK@/sim.vcf.gz -OutStat @OUT@ -MaxDist 100	stat.gz	e6505918c32f7aa2dacdf8f618745df867f53c8ced31b3bd168434cbec3e4117
+ingenotype/from_ped_numeric	stat	-InGenotype @WORK@/sim_numeric.p2g.geno -OutStat @OUT@ -MaxDist 100	stat.gz	4263c1ad82bd02f0f5c86bad5ee96e5106ebc1fa47f698c625374c49934dbca8
+ingenotype/from_ped_letter	stat	-InGenotype @WORK@/sim_letter.p2g.geno -OutStat @OUT@ -MaxDist 100	stat.gz	4263c1ad82bd02f0f5c86bad5ee96e5106ebc1fa47f698c625374c49934dbca8
+ingenotype/from_ped_edge	stat	-InGenotype @WORK@/edge.p2g.geno -OutStat @OUT@ -MaxDist 100	stat.gz	84f7167f9a064ac780bb8a838d80309b20ff6633f3d590a5199b75ea41a6fdbf
+ingenotype/multiallelic	stat	-InGenotype @WORK@/tri.geno -OutStat @OUT@ -SubPop @WORK@/tri.list -MaxDist 100	stat.gz	84f7167f9a064ac780bb8a838d80309b20ff6633f3d590a5199b75ea41a6fdbf
+prefix/ends_with_stat_gz	stat	-InVCF @WORK@/sim.vcf.gz -OutStat @OUT@.stat.gz -MaxDist 100	stat.gz	2881fc0ed4d005c8ee2d7c38062094caaa12c289275496001d586228936091c4
+edge/long_contig_name/stat	stat	-InVCF @WORK@/longname.vcf -OutStat @OUT@ -OutType 1 -MaxDist 100	stat.gz	7ff569bd26173459bee8465473c72739fab6631402746e57040f8f77ecce1812
+edge/long_contig_name/outtype/3	raw	-InVCF @WORK@/longname.vcf -OutStat @OUT@ -OutType 3 -MaxDist 100	LD.gz	d5313d80a5394827e58648283b675f2af6a400e83d12500be62ed0b04fede42e
+edge/long_contig_name/outtype/8	raw	-InVCF @WORK@/longname.vcf -OutStat @OUT@ -OutType 8 -MaxDist 100	LD.gz	3233ebf946dfbdc9b3805cda776b25bd3dd8e09f02ec1088a4b9cb23789f01cb
+edge/long_contig_name/fastpath	raw	-InVCF @WORK@/longname.vcf.gz -OutStat @OUT@ -OutType 8 -MaxDist 100 -T 4	LD.gz	3233ebf946dfbdc9b3805cda776b25bd3dd8e09f02ec1088a4b9cb23789f01cb
+edge/long_contig_name/ehh	raw	-InVCF @WORK@/longname_ehh.vcf.gz -OutStat @OUT@ -EHH chrLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLL:75960	ehh.gz	f2acddc4b25be199536189a3b137eb5654dd7ddb9acd3e17acdc3259573e6996

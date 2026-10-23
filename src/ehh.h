@@ -14,10 +14,8 @@ struct EhhParams {
     int64_t start_site = 0;
 };
 
-// Parses the -EHH spec by splitting on ':'. The original bails out with the
-// "Para [-EHH] should be [chr:Site]" message from the CLI when the colon is
-// missing; the caller is expected to have validated that already, so here we
-// only split (empty tokens skipped, like the original split()).
+// Parses the -EHH spec by splitting on ':' (empty tokens skipped, like the
+// original split()) and requires the site to be a whole number >= 0.
 bool parse_ehh(const std::string& spec, EhhParams& out);
 
 // Runs the EHH decay for the region [start_site-max_dist_bp, start_site+
@@ -27,9 +25,10 @@ bool parse_ehh(const std::string& spec, EhhParams& out);
 // -OutType value controlling whether the temp R script is deleted.
 //
 // Returns 1 on the full success path and 0 on the bail-out paths (missing
-// chromosome, <8 no-missing SNPs) -- mirroring EHH_Region_LDDecay. On the
-// bail-out paths an empty .ehh.gz is still created and the .stat.gz file is
-// left in place, exactly like the original.
+// chromosome, <8 no-missing SNPs, or a write failure) -- mirroring
+// EHH_Region_LDDecay. On the two original bail-outs an empty .ehh.gz is still
+// created and .stat.gz is left in place, exactly like the original; on a
+// write failure the .ehh.gz is removed.
 int run_ehh(const std::vector<ContigData>& contigs, const EhhParams& p,
             int max_dist_bp, int tf, const std::string& prefix);
 

@@ -1,0 +1,29 @@
+# Every file under these directories is a run-time product of the step scripts.
+# The only data tracked here is 00.GetData/base_chr22_50k.vcf.gz (the shipped
+# 50k slice) and the two group files in 04.Fig3Run.
+
+01.TestBySite/*
+02.TestBySample/*
+03.Fig2Run/*
+04.Fig3Run/*
+05.SupTable3Run/*/input/
+00.GetData/chr22/
+07.GenomeRun/genome/
+08.Accuracy/input/
+08.Accuracy/output/
+
+!01.TestBySite/step*.sh
+!01.TestBySite/README.txt
+!02.TestBySample/step*.sh
+!02.TestBySample/README.txt
+!03.Fig2Run/step*.sh
+!03.Fig2Run/plot_*.r
+!03.Fig2Run/README.txt
+!04.Fig3Run/step*.sh
+!04.Fig3Run/plot_*.r
+!04.Fig3Run/pop.info
+!04.Fig3Run/sample.group
+!04.Fig3Run/README.txt
+!08.Accuracy/step*.sh
+!08.Accuracy/tools/*.py
+!08.Accuracy/README.txt

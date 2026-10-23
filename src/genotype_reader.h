@@ -24,24 +24,21 @@ struct GenoBuf {
 };
 
 // Reads a PopLDdecay `-InGenotype` file into unpacked per-contig buffers,
-// replicating the original two paths:
-//   - non-SubPop: FilterGenotype.h FilterGeno (Cut3base always on in the main
-//     tool) + GetBestBase() encoding. With -OutFilterSNP the passing lines are
-//     also streamed verbatim to `{prefix}.genotype.filter.gz` (plain gzip,
-//     byte-compatible with the original ogzstream output).
-//   - SubPop: Read_SubPopGenotype_IN() inline filter (miss/het denominators
-//     over the subset, MAF = SeD/(SeD+Max), biallelic-only) + encode (het ->
-//     best/sed pseudo-haplotypes, missing -> 2). No filter.gz here.
+// replicating the original two paths: the non-SubPop one (FilterGeno with
+// Cut3base always on, plus GetBestBase() encoding; with -OutFilterSNP the
+// passing lines are also streamed verbatim to `{prefix}.genotype.filter.gz`)
+// and the SubPop one (Read_SubPopGenotype_IN()'s inline filter and encode).
 // The two paths intentionally differ (MAF definition, missing encoding), as in
 // the original. Prints the original stdout/stderr messages. With SubPop specs
 // each group is resolved against the genotype #CHROM header and packed
 // independently (one output vector per group); with no specs a single
-// all-samples vector is produced. Returns 1 on success, 0 on error (header
-// missing, unopenable files, subset < 3, ...).
+// all-samples vector is produced. `stats` receives the site counts (per site).
+// Returns 1 on success, 0 on error (header missing, unopenable files, a group
+// with fewer than 3 samples, ...).
 int read_genotype(const std::string& path, const Options& opt,
                   const std::string& prefix,
                   const std::vector<SubGroupSpec>& specs,
-                  std::vector<std::vector<GenoBuf>>& out);
+                  std::vector<std::vector<GenoBuf>>& out, ReadStats& stats);
 
 // Merges the unpacked genotype buffers into `out` (typically packed ContigData
 // from the VCF reader; may be empty). Matching contig names are combined (sites

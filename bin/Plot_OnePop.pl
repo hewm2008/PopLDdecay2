@@ -25,6 +25,7 @@ sub usage
 	-measure   <s> :  use the [r2/D/both] to measure LD decay [r2]
 	-method    <s> :  Plot methold (MeanBin/HW/MedianBin/PercentileBin)[MeanBin]
 	-percent   <f> :  percent ratio(0-1) for PercentileBin method [0.5]
+	-color     <s> :  curve colours, R names or '#hex', e.g. "blue,red"
 	-keepR         :  keep the R script for draw the LDdecay Fig
 
 	-help          :  show this help
@@ -32,7 +33,7 @@ sub usage
 USAGE
 }
 
-my ($help,$inFile,$inList,$output,$bin1,$bin2,$break,$keepR,$maxX,$measure,$method,$percent);
+my ($help,$inFile,$inList,$output,$bin1,$bin2,$break,$keepR,$maxX,$measure,$method,$percent,$color);
 
 
 GetOptions(
@@ -48,6 +49,7 @@ GetOptions(
 	"measure:s"=>\$measure,
 	"method:s"=>\$method,
 	"percent:s"=>\$percent,
+	"color:s"=>\$color,
 );
 
 if( defined($help) || !defined($output))
@@ -66,6 +68,14 @@ $bin2||=100;
 $method||="MeanBin";
 $break||=100;  $percent||=0.5;
 $measure||="r2";    my $RowPlot=2;  
+
+# -color: first colour for the main curve, second for D' (-measure both)
+my @user_colors = grep { length } split(/[\s,]+/, defined($color) ? $color : "");
+if (grep { !/^(#[0-9A-Fa-f]{6,8}|[A-Za-z][A-Za-z0-9]*)$/ } @user_colors)
+{ die "ERROR: -color takes R colour names or #RRGGBB, comma separated\n"; }
+my $col1 = @user_colors ? $user_colors[0] : "blue";
+my $col2 = @user_colors > 1 ? $user_colors[1] : "red";
+
 if ($measure eq  "D"  ||  $measure eq  "D'" )  { $RowPlot=3 ;} 
 elsif ($measure eq  "b"  ||  $measure eq  "both"  ||   $measure eq  "Both"  ||   $measure eq  "B")  { $RowPlot=4 ;}
 
@@ -192,10 +202,10 @@ newfile <- newfile[order(newfile\$file.dist),]
 newfile  <- base::unique(newfile)
 
 pdf("$output.pdf")
-plot(newfile\$dist/1000, newfile\$rsq, type="l",col="blue",main="LD decay", xlab="Distance (Kb)", ylab=expression(r^{2}),bty="n",xlim=c(0,$maxX),lwd=2)
+plot(newfile\$dist/1000, newfile\$rsq, type="l",col="$col1",main="LD decay", xlab="Distance (Kb)", ylab=expression(r^{2}),bty="n",xlim=c(0,$maxX),lwd=2)
 dev.off()
 png("$output.png")
-plot(newfile\$dist/1000, newfile\$rsq, type="l",col="blue",main="LD decay", xlab="Distance (Kb)", ylab=expression(r^{2}),bty="n",xlim=c(0,$maxX),lwd=2)
+plot(newfile\$dist/1000, newfile\$rsq, type="l",col="$col1",main="LD decay", xlab="Distance (Kb)", ylab=expression(r^{2}),bty="n",xlim=c(0,$maxX),lwd=2)
 dev.off()
 
 LOVE
@@ -236,10 +246,10 @@ newfile <- newfile[order(newfile\$file.dist),]
 newfile  <- base::unique(newfile)
 
 pdf("$output.pdf")
-plot(newfile\$dist/1000, newfile\$D, type="l",col="blue",main="LD decay", xlab="Distance (Kb)", ylab="D'",bty="n",xlim=c(0,$maxX),lwd=2)
+plot(newfile\$dist/1000, newfile\$D, type="l",col="$col1",main="LD decay", xlab="Distance (Kb)", ylab="D'",bty="n",xlim=c(0,$maxX),lwd=2)
 dev.off()
 png("$output.png")
-plot(newfile\$dist/1000, newfile\$D, type="l",col="blue",main="LD decay", xlab="Distance (Kb)", ylab="D'",bty="n",xlim=c(0,$maxX),lwd=2)
+plot(newfile\$dist/1000, newfile\$D, type="l",col="$col1",main="LD decay", xlab="Distance (Kb)", ylab="D'",bty="n",xlim=c(0,$maxX),lwd=2)
 dev.off()
 
 LOVE
@@ -309,19 +319,19 @@ newfileEE  <- base::unique(newfileEE)
 
 
 pdf("$output.pdf")
-plot(newfile\$dist/1000, newfile\$rsq, type="l",col="blue",main="LD decay", xlab="Distance (Kb)", ylab=expression(r^{2}),bty="n",ylim=c(0,1),xlim=c(0,$maxX),lwd=2)
+plot(newfile\$dist/1000, newfile\$rsq, type="l",col="$col1",main="LD decay", xlab="Distance (Kb)", ylab=expression(r^{2}),bty="n",ylim=c(0,1),xlim=c(0,$maxX),lwd=2)
 par(new=T)
-plot(newfileEE\$distD/1000, newfileEE\$DD, type="l",col="red",xlab="", ylab="",bty="n",xlim=c(0,$maxX),yaxt="n",lwd=2)
-axis(4,col="red",col.ticks="red",col.axis="red")
-mtext("D'",side=4,line=-1,col="red")
+plot(newfileEE\$distD/1000, newfileEE\$DD, type="l",col="$col2",xlab="", ylab="",bty="n",xlim=c(0,$maxX),yaxt="n",lwd=2)
+axis(4,col="$col2",col.ticks="red",col.axis="red")
+mtext("D'",side=4,line=-1,col="$col2")
 dev.off()
 
 png("$output.png")
-plot(newfile\$dist/1000, newfile\$rsq, type="l",col="blue",main="LD decay", xlab="Distance (Kb)", ylab=expression(r^{2}),bty="n",ylim=c(0,1),xlim=c(0,$maxX),lwd=2)
+plot(newfile\$dist/1000, newfile\$rsq, type="l",col="$col1",main="LD decay", xlab="Distance (Kb)", ylab=expression(r^{2}),bty="n",ylim=c(0,1),xlim=c(0,$maxX),lwd=2)
 par(new=T)
-plot(newfileEE\$distD/1000, newfileEE\$DD, type="l",col="red",xlab="", ylab="",bty="n",xlim=c(0,$maxX),yaxt="n",lwd=2)
-axis(4,col="red",col.ticks="red",col.axis="red")
-mtext("D'",side=4,line=-1,col="red")
+plot(newfileEE\$distD/1000, newfileEE\$DD, type="l",col="$col2",xlab="", ylab="",bty="n",xlim=c(0,$maxX),yaxt="n",lwd=2)
+axis(4,col="$col2",col.ticks="red",col.axis="red")
+mtext("D'",side=4,line=-1,col="$col2")
 
 dev.off()
 
@@ -490,10 +500,10 @@ LOVE
 			$Rshell=<<LOVE;
 read.table("$output.rrtmp")->data
 pdf("$output.pdf")
-plot(data[,1]/1000,data[,2],type="l",col="blue",main="LD decay $method ($percent)",xlab="Distance(Kb)",xlim=c(0,$maxX),ylab=expression(r^{2}),bty="n",lwd=2)
+plot(data[,1]/1000,data[,2],type="l",col="$col1",main="LD decay $method ($percent)",xlab="Distance(Kb)",xlim=c(0,$maxX),ylab=expression(r^{2}),bty="n",lwd=2)
 dev.off()
 png("$output.png")
-plot(data[,1]/1000,data[,2],type="l",col="blue",main="LD decay $method ($percent)",xlab="Distance(Kb)",xlim=c(0,$maxX),ylab=expression(r^{2}),bty="n",lwd=2)
+plot(data[,1]/1000,data[,2],type="l",col="$col1",main="LD decay $method ($percent)",xlab="Distance(Kb)",xlim=c(0,$maxX),ylab=expression(r^{2}),bty="n",lwd=2)
 dev.off()
 
 LOVE
@@ -503,10 +513,10 @@ LOVE
 			$Rshell=<<LOVE;
 read.table("$output.ddtmp")->data
 pdf("$output.pdf")
-plot(data[,1]/1000,data[,2],type="l",col="blue",main="LD decay $method ($percent)",xlab="Distance(Kb)",xlim=c(0,$maxX),ylab="D'",bty="n",lwd=2)
+plot(data[,1]/1000,data[,2],type="l",col="$col1",main="LD decay $method ($percent)",xlab="Distance(Kb)",xlim=c(0,$maxX),ylab="D'",bty="n",lwd=2)
 dev.off()
 png("$output.png")
-plot(data[,1]/1000,data[,2],type="l",col="blue",main="LD decay $method ($percent)",xlab="Distance(Kb)",xlim=c(0,$maxX),ylab="D'",bty="n",lwd=2)
+plot(data[,1]/1000,data[,2],type="l",col="$col1",main="LD decay $method ($percent)",xlab="Distance(Kb)",xlim=c(0,$maxX),ylab="D'",bty="n",lwd=2)
 dev.off()
 
 LOVE
@@ -517,19 +527,19 @@ LOVE
 read.table("$output.rrtmp")->data
 read.table("$output.ddtmp")->dataDD
 pdf("$output.pdf")
-plot(data[,1]/1000,data[,2],type="l",col="blue",main="LD decay $method ($percent)",xlab="Distance(Kb)",xlim=c(0,$maxX),ylab=expression(r^{2}),bty="n",lwd=2)
+plot(data[,1]/1000,data[,2],type="l",col="$col1",main="LD decay $method ($percent)",xlab="Distance(Kb)",xlim=c(0,$maxX),ylab=expression(r^{2}),bty="n",lwd=2)
 par(new=T)
-plot(dataDD[,1]/1000,dataDD[,2],type="l",col="red",xlab="",ylab="",xlim=c(0,$maxX),bty="n",yaxt="n",lwd=2)
-axis(4,col="red",col.ticks="red",col.axis="red")
-mtext("D'",side=4,line=-1,col="red")
+plot(dataDD[,1]/1000,dataDD[,2],type="l",col="$col2",xlab="",ylab="",xlim=c(0,$maxX),bty="n",yaxt="n",lwd=2)
+axis(4,col="$col2",col.ticks="red",col.axis="red")
+mtext("D'",side=4,line=-1,col="$col2")
 dev.off()
 
 png("$output.png")
-plot(data[,1]/1000,data[,2],type="l",col="blue",main="LD decay $method ($percent)",xlab="Distance(Kb)",xlim=c(0,$maxX),ylab=expression(r^{2}),bty="n",lwd=2)
+plot(data[,1]/1000,data[,2],type="l",col="$col1",main="LD decay $method ($percent)",xlab="Distance(Kb)",xlim=c(0,$maxX),ylab=expression(r^{2}),bty="n",lwd=2)
 par(new=T)
-plot(dataDD[,1]/1000,dataDD[,2],type="l",col="red",xlab="",ylab="",xlim=c(0,$maxX),bty="n",yaxt="n",lwd=2)
-axis(4,col="red",col.ticks="red",col.axis="red")
-mtext("D'",side=4,line=-1,col="red")
+plot(dataDD[,1]/1000,dataDD[,2],type="l",col="$col2",xlab="",ylab="",xlim=c(0,$maxX),bty="n",yaxt="n",lwd=2)
+axis(4,col="$col2",col.ticks="red",col.axis="red")
+mtext("D'",side=4,line=-1,col="$col2")
 dev.off()
 
 
@@ -634,10 +644,10 @@ elsif ($method eq "MeanBin" )
 	$Rshell=<<LOVE;
 read.table("$output.bin")->data
 pdf("$output.pdf")
-plot(data[,1]/1000,data[,2],type="l",col="blue",main="LD decay",xlab="Distance(Kb)",xlim=c(0,$maxX),ylab=expression(r^{2}),bty="n",lwd=2)
+plot(data[,1]/1000,data[,2],type="l",col="$col1",main="LD decay",xlab="Distance(Kb)",xlim=c(0,$maxX),ylab=expression(r^{2}),bty="n",lwd=2)
 dev.off()
 png("$output.png")
-plot(data[,1]/1000,data[,2],type="l",col="blue",main="LD decay",xlab="Distance(Kb)",xlim=c(0,$maxX),ylab=expression(r^{2}),bty="n",lwd=2)
+plot(data[,1]/1000,data[,2],type="l",col="$col1",main="LD decay",xlab="Distance(Kb)",xlim=c(0,$maxX),ylab=expression(r^{2}),bty="n",lwd=2)
 dev.off()
 
 LOVE
@@ -647,10 +657,10 @@ LOVE
 		$Rshell=<<LOVE;
 read.table("$output.bin")->data
 pdf("$output.pdf")
-plot(data[,1]/1000,data[,3],type="l",col="blue",main="LD decay",xlab="Distance(Kb)",xlim=c(0,$maxX),ylab="D'",bty="n",lwd=2)
+plot(data[,1]/1000,data[,3],type="l",col="$col1",main="LD decay",xlab="Distance(Kb)",xlim=c(0,$maxX),ylab="D'",bty="n",lwd=2)
 dev.off()
 png("$output.png")
-plot(data[,1]/1000,data[,3],type="l",col="blue",main="LD decay",xlab="Distance(Kb)",xlim=c(0,$maxX),ylab="D'",bty="n",lwd=2)
+plot(data[,1]/1000,data[,3],type="l",col="$col1",main="LD decay",xlab="Distance(Kb)",xlim=c(0,$maxX),ylab="D'",bty="n",lwd=2)
 dev.off()
 
 LOVE
@@ -661,19 +671,19 @@ LOVE
 		$Rshell=<<LOVE;
 read.table("$output.bin")->data
 pdf("$output.pdf")
-plot(data[,1]/1000,data[,2],type="l",col="blue",main="LD decay",xlab="Distance(Kb)",xlim=c(0,$maxX),ylab=expression(r^{2}),bty="n",lwd=2)
+plot(data[,1]/1000,data[,2],type="l",col="$col1",main="LD decay",xlab="Distance(Kb)",xlim=c(0,$maxX),ylab=expression(r^{2}),bty="n",lwd=2)
 par(new=T)
-plot(data[,1]/1000,data[,3],type="l",col="red",xlab="",ylab="",xlim=c(0,$maxX),bty="n",yaxt="n",lwd=2)
-axis(4,col="red",col.ticks="red",col.axis="red")
-mtext("D'",side=4,line=-1,col="red")
+plot(data[,1]/1000,data[,3],type="l",col="$col2",xlab="",ylab="",xlim=c(0,$maxX),bty="n",yaxt="n",lwd=2)
+axis(4,col="$col2",col.ticks="red",col.axis="red")
+mtext("D'",side=4,line=-1,col="$col2")
 dev.off()
 
 png("$output.png")
-plot(data[,1]/1000,data[,2],type="l",col="blue",main="LD decay",xlab="Distance(Kb)",xlim=c(0,$maxX),ylab=expression(r^{2}),bty="n",lwd=2)
+plot(data[,1]/1000,data[,2],type="l",col="$col1",main="LD decay",xlab="Distance(Kb)",xlim=c(0,$maxX),ylab=expression(r^{2}),bty="n",lwd=2)
 par(new=T)
-plot(data[,1]/1000,data[,3],type="l",col="red",xlab="",ylab="",xlim=c(0,$maxX),bty="n",yaxt="n",lwd=2)
-axis(4,col="red",col.ticks="red",col.axis="red")
-mtext("D'",side=4,line=-1,col="red")
+plot(data[,1]/1000,data[,3],type="l",col="$col2",xlab="",ylab="",xlim=c(0,$maxX),bty="n",yaxt="n",lwd=2)
+axis(4,col="$col2",col.ticks="red",col.axis="red")
+mtext("D'",side=4,line=-1,col="$col2")
 dev.off()
 
 LOVE

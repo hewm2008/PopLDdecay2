@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdint>
+#include <cstdlib>
 #include <fstream>
 #include <iostream>
 #include <string>
@@ -48,7 +49,7 @@ bool parse_region_token(const std::string& tok, Region& r, std::string& err) {
         v = strtoll(s.c_str(), nullptr, 10);
         return v >= 1;
     };
-    int64_t a, b;
+    int64_t a = 0, b = 0;
     if (dash == std::string::npos) {
         if (!parse_num(coord, a)) {
             err = "-L: bad coordinate in \"" + tok + "\"";
@@ -191,8 +192,9 @@ const std::string* RegionIndex::find(int64_t pos) const {
     return labels_[idx];
 }
 
-RegionSet::RegionSet(const std::vector<Region>& regions) {    // Group by chrom; keep insertion order within a chrom (then binary-search
-    // on starts; overlaps resolve to the largest start).
+// Group by chrom; keep insertion order within a chrom (then binary-search on
+// starts; overlaps resolve to the largest start).
+RegionSet::RegionSet(const std::vector<Region>& regions) {
     std::vector<const Region*> order;
     order.reserve(regions.size());
     for (const Region& r : regions) order.push_back(&r);

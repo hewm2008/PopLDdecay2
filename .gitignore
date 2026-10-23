@@ -1,0 +1,9 @@
+# Build outputs (bin/PopLDdecay2 is tracked on purpose: release archives ship it)
+build/
+*.o
+*.a
+*.so
+
+# Editor / OS noise
+*.swp
+.DS_Store

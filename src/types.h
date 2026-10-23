@@ -93,6 +93,14 @@ struct SnpData {
     SnpBits minor;   // nwords words, one bit per haplotype
     SnpBits miss;    // nwords words, one bit per haplotype
 
+    // The number of minor alleles (the popcount of the whole minor plane) and
+    // whether the site has any missing call. When neither site of a pair has
+    // a missing call, the 2x2 haplotype table follows from ONE popcount per
+    // word plus these two numbers -- see the fast path in ldkernel.cpp. The
+    // padding bits beyond 2*N are zero, so they are in neither count.
+    int32_t minor_count = 0;
+    bool has_missing = false;
+
     // SnpBits stores a borrowed arena pointer: a copy would alias the same
     // arena slices, so copies are rejected (moves only). SnpArena's
     // unique_ptr members already make ContigData move-only.
@@ -102,6 +110,23 @@ struct SnpData {
     SnpData(SnpData&&) = default;
     SnpData& operator=(SnpData&&) = default;
 };
+
+// Fills the two per-site fields the kernel's fast path needs: the number of
+// minor alleles (the popcount of the whole minor plane) and whether the site
+// has a missing call. The padding bits beyond 2*N are zero, so they are in
+// neither count.
+inline void site_counts(const uint64_t* minor, const uint64_t* miss,
+                        size_t nwords, int32_t& minor_count,
+                        bool& has_missing) {
+    int32_t c = 0;
+    bool m = false;
+    for (size_t w = 0; w < nwords; ++w) {
+        c += static_cast<int32_t>(__builtin_popcountll(minor[w]));
+        if (miss[w] != 0) m = true;
+    }
+    minor_count = c;
+    has_missing = m;
+}
 
 struct ContigData {
     std::string name;
@@ -120,20 +145,20 @@ struct Bin {
 
 struct Options {
     std::string in_vcf;
-    std::string in_genotype;   // M6: -InGenotype input (native IUPAC format)
+    std::string in_genotype;   // -InGenotype input (native IUPAC format)
+    std::string in_plink;      // -InPlink input (.bed prefix or .bed file)
     std::string out_stat;
-    std::vector<std::string> subpop_files; // M3c: -SubPop sample lists (repeatable)
-    std::string ehh;           // M5: -EHH input
-    std::string region;        // M3: raw -L argument
-    std::vector<Region> regions;  // M3: parsed -L regions (sorted by label)
+    std::vector<std::string> subpop_files; // -SubPop sample lists (repeatable)
+    std::string ehh;           // -EHH input
+    std::vector<Region> regions;  // parsed -L regions (sorted by label)
     int out_type = 1;          // OutType 0-8
     int max_dist_kb = 300;
     double maf = 0.005;
     double het = 0.88;
     double miss = 0.25;
     int method = 1;            // only Method 1 supported
-    bool out_filter_snp = false; // M3: -OutFilterSNP
-    int threads = 4;           // M2: parallel LD workers (>=1)
+    bool out_filter_snp = false; // -OutFilterSNP
+    int threads = 4;           // parallel LD workers (>=1)
 };
 
 struct ReadStats {

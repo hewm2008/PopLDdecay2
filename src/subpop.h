@@ -8,8 +8,6 @@ namespace pld2 {
 
 // Resolved -SubPop sample subset (one per population).
 struct SubPop {
-    bool active = false;           // true when the -SubPop group resolved ok
-    std::string label;             // output suffix ("" = legacy single group)
     std::vector<int> sample_cols;  // VCF token indices (>=9) of the subset
                                    // samples, in VCF header order
     int n_samples = 0;             // == sample_cols.size() (NumberSubGroup)

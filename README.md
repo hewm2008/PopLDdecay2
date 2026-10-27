@@ -2,9 +2,7 @@
 
 **Fast, memory-efficient linkage disequilibrium (LD) decay analysis**
 
-[中文](README.cn.md) | [Input and output formats](doc/FORMAT.md) | [Reproduction scripts](RunTest/README.txt)
-
-**Version: v0.80**
+[中文](README.cn.md) | [Input and output formats](doc/FORMAT.md) | [Reproduction scripts](RunTest/README.txt) | **Version: v0.80**
 
 PopLDdecay2 calculates LD decay from SNP data. It supports VCF, genotype, and PLINK binary input, population subsets, region restrictions, and parallel computation. For inputs and options supported by [PopLDdecay 3.45](https://github.com/hewm2008/PopLDdecay), it uses the same command-line interface and filters and produces byte-identical data output. On chromosome 22 of 1000 Genomes Phase 3, it was 17.6× faster with one thread and 147× faster with 32 threads, while using roughly half the memory in the single-threaded comparison. See [Performance](#performance) for the benchmark conditions.
 
@@ -34,7 +32,7 @@ sh make.sh
 ./bin/PopLDdecay2 -help
 ```
 
-The executable is written to `bin/PopLDdecay2`. The build requires a C++17 compiler (GCC 8 or equivalent), htslib, zlib, and pthreads. htslib 1.16 or newer is required; version 1.18 or newer is recommended for speed.
+The executable is written to `bin/PopLDdecay2`. The build requires a C++17 compiler (GCC 8 or equivalent), htslib, zlib, and pthreads. htslib 1.16 or newer is required; version 1.18 with libdeflate or newer is recommended for speed.
 
 If htslib is installed outside a standard location, specify its prefix, which must contain `include/htslib` and `lib/libhts`:
 
@@ -218,7 +216,8 @@ r²(i,j) = (P(Ai*Aj) - P(Ai)*P(Aj))² /
 
 The curve reflects the recombination experienced by a population and informs population structure analysis, LD-based relatedness estimation, and association study design. The example below shows five 1000 Genomes superpopulations analyzed in one pass through one file (`RunTest/04.Fig3Run`).
 
-![LD decay in five populations](doc/figures/group_lddecay.png)
+<p align="center"><img src="doc/figures/group_lddecay.png" width="52%" alt="LD decay in five populations"></p>
+
 
 ## Performance
 
@@ -274,7 +273,7 @@ They cover 108 cases: 88 output digests, 17 behavioral assertions, and 3 documen
 | Problem | What to check |
 | --- | --- |
 | Build reports `htslib not found` | Install htslib and set `HTSLIB_ROOT` to the prefix containing `include/htslib` and `lib/libhts`. |
-| Build reports `htslib 1.16 or newer is required` | Upgrade htslib; 1.18 or newer is faster. |
+| Build reports `htslib 1.16 or newer is required` | Upgrade htslib; 1.18 or newer with libdeflate is faster. |
 | VCF reading remains sequential with `-T > 1` | Ordinary gzip cannot be indexed. Use bgzip and tabix as shown in [Input](#input). |
 | A `-SubPop` sample cannot be found | Match names exactly to the VCF header, genotype header, or PLINK `.fam` ID. |
 | PLINK and VCF input give different r² values | PLINK `.bed` stores genotypes rather than phase; phased input can therefore give different results. |
@@ -282,6 +281,6 @@ They cover 108 cases: 88 output digests, 17 behavioral assertions, and 3 documen
 | A numeric option is rejected | Check the strict numeric requirements in [Command-line options](#command-line-options). |
 
 ## Contact
+- [:email:](https://github.com/hewm2008/PopLDdecay2) hewm2008@gmail.com / hewm2008@qq.com
+- join the<b><i> QQ group : 125293663</b></i>
 
-- Email: hewm2008@gmail.com / hewm2008@qq.com ([project](https://github.com/hewm2008/PopLDdecay))
-- QQ group: 125293663

@@ -4,7 +4,7 @@
 
 [中文](README.cn.md) | [Input and output formats](doc/FORMAT.md) | [Reproduction scripts](RunTest/README.txt) | **Version: v0.80**
 
-PopLDdecay2 calculates LD decay from SNP data. It supports VCF, genotype, and PLINK binary input, population subsets, region restrictions, and parallel computation. For inputs and options supported by [PopLDdecay 3.45](https://github.com/hewm2008/PopLDdecay), it uses the same command-line interface and filters and produces byte-identical data output. On chromosome 22 of 1000 Genomes Phase 3, it was 17.6× faster with one thread and 147× faster with 32 threads, while using roughly half the memory in the single-threaded comparison. See [Performance](#performance) for the benchmark conditions.
+PopLDdecay2 calculates LD decay from SNP data. It supports VCF, genotype, and PLINK binary input, population subsets, region restrictions, and parallel computation. For inputs and options supported by [PopLDdecay 3.45](https://github.com/hewm2008/PopLDdecay), it uses the same command-line interface and filters and produces byte-identical data output. On [chromosome 22 of 1000 Genomes Phase 3](https://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/), it was 17.6× faster with one thread and 147× faster with 32 threads, while using roughly half the memory in the single-threaded comparison. See [Performance](#performance) for the benchmark conditions.
 
 If you use PopLDdecay2, please cite its repository for now: [hewm2008/PopLDdecay2](https://github.com/hewm2008/PopLDdecay2).
 

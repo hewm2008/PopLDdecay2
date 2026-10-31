@@ -21,6 +21,8 @@
 CHR22=${CHR22:-../../00.GetData/chr22/chr22.vcf.gz}
 SITES=${SITES:-"100000 200000 300000 500000"}
 SAMPLES=${SAMPLES:-"250 500 1000 2504"}
+BGZIP=${BGZIP:-$(command -v bgzip || echo /home/heweiming/01.Software/samtools-1.23/bin/bgzip)}
+TABIX=${TABIX:-$(command -v tabix || echo /home/heweiming/01.Software/samtools-1.23/bin/tabix)}
 
 mkdir -p input
 
@@ -36,8 +38,8 @@ for M in $SITES; do
 	zcat $CHR22 \
 		| awk -v m=$M -v t=$T 'BEGIN{FS="\t";i=0} /^#/{print;next} {if(length($4)==1 && length($5)==1 && $4 ~ /^[ACGT]$/ && $5 ~ /^[ACGT]$/){i++; if((i*m)%t < m) print}}' \
 		| cut -f1-9,10-$((9 + N)) \
-		| bgzip -c > input/n${N}_m${M}.vcf.gz
-	tabix -f -p vcf input/n${N}_m${M}.vcf.gz
+		| $BGZIP -c > input/n${N}_m${M}.vcf.gz
+	$TABIX -@ 8 -f -p vcf input/n${N}_m${M}.vcf.gz
 	echo "n${N}_m${M}  sites=$(zcat input/n${N}_m${M}.vcf.gz | grep -vc '^#')  samples=$(zcat input/n${N}_m${M}.vcf.gz | grep -m1 '^#CHROM' | awk '{print NF-9}')"
 done
 done

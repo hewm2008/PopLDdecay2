@@ -17,7 +17,7 @@ date
 
 TAG=${TAG:-sub100_maf0.1}
 
-PLINK2=${PLINK2:-$(command -v plink2 || echo /home/liaojing/01.Software/plink-260121/plink2)}
+PLINK2=${PLINK2:-$(command -v plink2 || echo /home/heweiming/01.Software/plink-260121/plink2)}
 if [ -z "$PLD2" ]; then
 	for c in ../../bin/PopLDdecay2 ../../../bin/PopLDdecay2; do
 		if [ -x "$c" ]; then PLD2=$c; break; fi

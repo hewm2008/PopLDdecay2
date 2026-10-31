@@ -9,9 +9,11 @@
 # --r2-phased is the haplotype r^2, the statistic PopLDdecay2 computes.
 # --ld-window-r2 0 is required: the default 0.2 would drop the low-r^2 pairs.
 
-PLINK2=${PLINK2:-$(command -v plink2 || echo /home/liaojing/01.Software/plink/plink2)}
+PLINK2=${PLINK2:-$(command -v plink2 || echo /home/heweiming/01.Software/plink/plink2)}
 SITES=${SITES:-"100000 200000 300000 500000"}
 SAMPLES=${SAMPLES:-"250 500 1000 2504"}
+REPEATS=${REPEATS:-5}
+THREADS=${THREADS:-8}
 
 mkdir -p out/bed out/plink2
 
@@ -25,10 +27,14 @@ for M in $SITES; do
 	[ -f "$V" ] || { echo "no $V -- run step1_makeGrid.sh first"; exit 1; }
 	if [ ! -f "$BED.bed" ]; then
 		echo "convert  n${N}_m${M}"
-		/bin/time	-v	-p	$PLINK2	--vcf-half-call	missing	--make-bed	--vcf	$V	--out	$BED	--maf	0.005	--geno	0.25	2>	$BED.convert.time
+		/bin/time	-v	-p	$PLINK2	--vcf-half-call	missing	--make-bed	--vcf	$V	--out	$BED	--maf	0.005	--geno	0.25	--threads	$THREADS	2>	$BED.convert.time
 	fi
-	echo "PLINK 2  n${N}_m${M}"
-	/bin/time	-v	-p	$PLINK2	--bfile	$BED	--r2-phased	--ld-window-kb	300	--ld-window-r2	0	--out	out/plink2/n${N}_m${M}	2>	out/plink2/n${N}_m${M}.time
+	R=1
+	while [ "$R" -le "$REPEATS" ]; do
+		echo "PLINK 2  n${N}_m${M}  rep $R/$REPEATS"
+		/bin/time	-v	-p	$PLINK2	--bfile	$BED	--r2-phased	--ld-window-kb	300	--ld-window-r2	0	--threads	$THREADS	--out	out/plink2/n${N}_m${M}	>	out/plink2/n${N}_m${M}.r$R.log	2>	out/plink2/n${N}_m${M}.r$R.time
+		R=$((R + 1))
+	done
 done
 done
 

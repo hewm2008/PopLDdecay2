@@ -9,6 +9,8 @@
 PLD2=../../../bin/PopLDdecay2
 SITES=${SITES:-"2000 5000 10000 50000 100000"}
 SAMPLES=${SAMPLES:-"250 500 1000 2504"}
+REPEATS=${REPEATS:-5}
+TABIX=${TABIX:-$(command -v tabix || echo /home/heweiming/01.Software/samtools-1.23/bin/tabix)}
 
 mkdir -p out/pld2
 
@@ -19,10 +21,14 @@ for N in $SAMPLES; do
 for M in $SITES; do
 	V=input/n${N}_m${M}.vcf.gz
 	[ -f "$V" ] || { echo "no $V -- run step1_makeGrid.sh first"; exit 1; }
-	[ -s "$V.tbi" ] || tabix -f -p vcf "$V"
+	[ -s "$V.tbi" ] || $TABIX -@ 8 -f -p vcf "$V"
 	for T in 1 8; do
-		echo "PopLDdecay2  n${N}_m${M}  -T $T"
-		/bin/time	-v	-p	$PLD2	-InVCF	$V	-OutStat	out/pld2/n${N}_m${M}.t$T	-MaxDist	300	-MAF	0.005	-T	$T	2>	out/pld2/n${N}_m${M}.t$T.time
+		R=1
+		while [ "$R" -le "$REPEATS" ]; do
+			echo "PopLDdecay2  n${N}_m${M}  -T $T  rep $R/$REPEATS"
+			/bin/time	-v	-p	$PLD2	-InVCF	$V	-OutStat	out/pld2/n${N}_m${M}.t$T	-MaxDist	300	-MAF	0.005	-T	$T	>	out/pld2/n${N}_m${M}.t$T.r$R.log	2>	out/pld2/n${N}_m${M}.t$T.r$R.time
+			R=$((R + 1))
+		done
 	done
 done
 done

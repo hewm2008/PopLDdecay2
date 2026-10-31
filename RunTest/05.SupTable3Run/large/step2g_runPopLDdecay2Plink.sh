@@ -8,9 +8,11 @@
 # a .bed is unphased, so this step computes the unphased r^2.
 
 PLD2=../../../bin/PopLDdecay2
-PLINK2=${PLINK2:-$(command -v plink2 || echo /home/liaojing/01.Software/plink/plink2)}
+PLINK2=${PLINK2:-$(command -v plink2 || echo /home/heweiming/01.Software/plink/plink2)}
 SITES=${SITES:-"100000 200000 300000 500000"}
 SAMPLES=${SAMPLES:-"250 500 1000 2504"}
+REPEATS=${REPEATS:-5}
+THREADS=${THREADS:-8}
 
 mkdir -p out/bed out/pld2plink
 
@@ -24,11 +26,15 @@ for M in $SITES; do
 	[ -f "$V" ] || { echo "no $V -- run step1_makeGrid.sh first"; exit 1; }
 	if [ ! -f "$BED.bed" ]; then
 		echo "convert  n${N}_m${M}"
-		/bin/time	-v	-p	$PLINK2	--vcf-half-call	missing	--make-bed	--vcf	$V	--out	$BED	--maf	0.005	--geno	0.25	2>	$BED.convert.time
+		/bin/time	-v	-p	$PLINK2	--vcf-half-call	missing	--make-bed	--vcf	$V	--out	$BED	--maf	0.005	--geno	0.25	--threads	$THREADS	2>	$BED.convert.time
 	fi
 	for T in 1 8; do
-		echo "PopLDdecay2 -InPlink  n${N}_m${M}  -T $T"
-		/bin/time	-v	-p	$PLD2	-InPlink	$BED.bed	-OutStat	out/pld2plink/n${N}_m${M}.t$T	-MaxDist	300	-MAF	0.005	-T	$T	2>	out/pld2plink/n${N}_m${M}.t$T.time
+		R=1
+		while [ "$R" -le "$REPEATS" ]; do
+			echo "PopLDdecay2 -InPlink  n${N}_m${M}  -T $T  rep $R/$REPEATS"
+			/bin/time	-v	-p	$PLD2	-InPlink	$BED.bed	-OutStat	out/pld2plink/n${N}_m${M}.t$T	-MaxDist	300	-MAF	0.005	-T	$T	>	out/pld2plink/n${N}_m${M}.t$T.r$R.log	2>	out/pld2plink/n${N}_m${M}.t$T.r$R.time
+			R=$((R + 1))
+		done
 	done
 done
 done

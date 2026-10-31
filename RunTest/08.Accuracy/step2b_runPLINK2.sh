@@ -20,7 +20,7 @@ date
 
 TAG=${TAG:-sub100_maf0.1}
 
-PLINK2=${PLINK2:-$(command -v plink2 || echo /home/liaojing/01.Software/plink-260121/plink2)}
+PLINK2=${PLINK2:-$(command -v plink2 || echo /home/heweiming/01.Software/plink-260121/plink2)}
 echo "PLINK 2.0: $PLINK2"
 
 IN=input/$TAG.vcf.gz

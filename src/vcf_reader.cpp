@@ -1,3 +1,4 @@
+#include "textutil.h"
 #include "vcf_reader.h"
 
 #include <algorithm>
@@ -27,22 +28,6 @@ namespace pld2 {
 namespace {
 
 // Header tokenization on space/tab (replicates split(line,inf," \t")).
-std::vector<std::string> split_ws(const std::string& line) {
-    std::vector<std::string> toks;
-    std::string cur;
-    for (char c : line) {
-        if (c == ' ' || c == '\t') {
-            if (!cur.empty()) {
-                toks.push_back(cur);
-                cur.clear();
-            }
-        } else {
-            cur.push_back(c);
-        }
-    }
-    if (!cur.empty()) toks.push_back(cur);
-    return toks;
-}
 
 // Reads raw allele chars at index 0 and 2 of a token (replicates spline[jj][0]
 // and spline[jj][2] reads, including the '0/.' / '.' counting quirks).
@@ -348,6 +333,8 @@ std::vector<ContigData> build_contigs(std::map<std::string, ChrBuf>& raw,
             sd.pos = buf.pos[i];
             sd.minor.assign(cd.arena, &buf.minor[i * nwords], nwords);
             sd.miss.assign(cd.arena, &buf.miss[i * nwords], nwords);
+            site_counts(sd.minor.data(), sd.miss.data(), nwords,
+                        sd.minor_count, sd.has_missing);
             cd.snps.push_back(std::move(sd));
         }
         out.push_back(std::move(cd));
@@ -478,21 +465,11 @@ bool compute_bins_indexed(const std::string& path, const Options& opt,
     const auto ms = [](const Clock::time_point& t) {
         return std::chrono::duration<double, std::milli>(Clock::now() - t).count();
     };
+    ld_progress_reset();
 
     const size_t nbufs = subs.empty() ? 1 : subs.size();
     const int out_type = outs[0].out_type;
-    const size_t nbins = static_cast<size_t>(max_dist_bp) + 1;
-    const bool hist_mode = (out_type == 4 || out_type == 5);
-    for (AccumSpec& out : outs) {
-        out.bins.assign(nbins, Bin{});
-        if (hist_mode) {
-            out.hist_rr.assign(nbins * 101, 0);
-            out.hist_d.assign((out_type == 4) ? nbins * 101 : 0, 0);
-        }
-        if (out_type == 3 || out_type == 6 || out_type == 7 || out_type == 8) {
-            out.ld = std::make_unique<LdWriter>(out_type);
-        }
-    }
+    for (AccumSpec& out : outs) init_accum(out, out_type, max_dist_bp);
 
     // ---- prelude: header -> nsamples, contig list, phase (replicates old tool) ----
     htsFile* pre = hts_open(path.c_str(), "r");
@@ -716,14 +693,7 @@ bool compute_bins_indexed(const std::string& path, const Options& opt,
         return false;
     }
     size_t nworkers = std::min<size_t>(static_cast<size_t>(opt.threads), tasks.size());
-    if (hist_mode && nworkers > 4) {
-        // OutType 4/5 keeps a (MaxDist+1)*101 int histogram per worker
-        // (~121 MB/worker at MaxDist=300 kb). Cap the worker count to bound
-        // memory; integer sums merge in any order, so output is byte-identical.
-        std::cerr << "OutType 4/5 histogram mode: capping accumulation workers "
-                     "to 4 (histogram is ~121 MB/worker at MaxDist=300 kb)\n";
-        nworkers = 4;
-    }
+    cap_histogram_workers(nworkers, out_type);
     if (timing) std::cerr << "[timing] fastpath prelude=" << ms(t0) << "ms  nworkers=" << nworkers
                           << " nsamples=" << nsamples << " phased=" << phased
                           << " tasks=" << tasks.size() << "\n";
@@ -734,16 +704,8 @@ bool compute_bins_indexed(const std::string& path, const Options& opt,
     for (auto& pw : partial) {
         for (size_t g = 0; g < nbufs; ++g) {
             AccumSpec& p = pw[g];
-            p.out_type = out_type;
+            init_accum(p, out_type, max_dist_bp);
             p.nhaplo = nhaplo[g];
-            p.bins.assign(nbins, Bin{});
-            if (hist_mode) {
-                p.hist_rr.assign(nbins * 101, 0);
-                if (out_type == 4) p.hist_d.assign(nbins * 101, 0);
-            }
-            if (out_type == 3 || out_type == 6 || out_type == 7 || out_type == 8) {
-                p.ld = std::make_unique<LdWriter>(out_type);
-            }
         }
     }
     std::vector<ReadStats> wstats(nworkers);
@@ -813,6 +775,8 @@ bool compute_bins_indexed(const std::string& path, const Options& opt,
                     sd.pos = bufs[g].pos[i];
                     sd.minor.assign(cd.arena, &bufs[g].minor[i * nwords[g]], nwords[g]);
                     sd.miss.assign(cd.arena, &bufs[g].miss[i * nwords[g]], nwords[g]);
+                    site_counts(sd.minor.data(), sd.miss.data(), nwords[g],
+                                sd.minor_count, sd.has_missing);
                     cd.snps.push_back(std::move(sd));
                 }
                 // Shard left-site core: pairs are owned by the shard whose core
@@ -857,20 +821,7 @@ bool compute_bins_indexed(const std::string& path, const Options& opt,
     // ordered per worker, see ldkernel.h note).
     for (size_t g = 0; g < nbufs; ++g) {
         AccumSpec& out = outs[g];
-        for (size_t w = 0; w < nworkers; ++w) {
-            for (size_t d = 0; d < nbins; ++d) {
-                out.bins[d].count += partial[w][g].bins[d].count;
-                out.bins[d].sumRR += partial[w][g].bins[d].sumRR;
-                out.bins[d].sumD += partial[w][g].bins[d].sumD;
-            }
-            if (hist_mode) {
-                for (size_t k = 0; k < nbins * 101; ++k) {
-                    out.hist_rr[k] += partial[w][g].hist_rr[k];
-                    if (out_type == 4) out.hist_d[k] += partial[w][g].hist_d[k];
-                }
-            }
-            if (out.ld && partial[w][g].ld) out.ld->absorb(*partial[w][g].ld);
-        }
+        for (size_t w = 0; w < nworkers; ++w) merge_partial(out, partial[w][g]);
     }
     for (size_t w = 0; w < nworkers; ++w) {
         stats.sites_in += wstats[w].sites_in;

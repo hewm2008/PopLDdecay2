@@ -9,7 +9,7 @@ cd "$(dirname "$0")"
 # Support KEY=VALUE arguments (e.g. bash make.sh HTSLIB_ROOT=/path).
 for _arg in "$@"; do
   case "$_arg" in
-    HTSLIB_ROOT=*|CXX=*|NATIVE=*|LTO=*|KEEP_BUILD=*)
+    HTSLIB_ROOT=*|CXX=*|NATIVE=*|LTO=*|KEEP_BUILD=*|ENABLE_MPOPCNT=*|ENABLE_FP_CONTRACT_OFF=*)
       eval "export $_arg" ;;
     *) echo "WARNING: ignored unknown argument: $_arg" >&2 ;;
   esac
@@ -27,6 +27,21 @@ if [ -z "$HTS_ROOT" ]; then
       break
     fi
   done
+fi
+
+# htslib version, read from the HTS_VERSION macro (nothing is compiled and
+# nothing is run against the library). 1.16 is the floor (the fast path uses
+# tbx_seqnames()), 1.18 and newer are noticeably faster.
+HTS_VER=$(sed -n 's/^#define HTS_VERSION *\([0-9]*\).*/\1/p' \
+          "$HTS_ROOT/include/htslib/hts.h" 2>/dev/null | head -1)
+if [ -n "$HTS_VER" ]; then
+  if [ "$HTS_VER" -lt 101600 ]; then
+    echo "ERROR: htslib 1.16 or newer is required (found $HTS_VER) in $HTS_ROOT" >&2
+    exit 1
+  fi
+  if [ "$HTS_VER" -lt 101800 ]; then
+    echo "note: htslib is older than 1.18 ($HTS_VER): it works, but 1.18+ is faster" >&2
+  fi
 fi
 
 CLEAN_BUILD=1
@@ -155,6 +170,16 @@ build_with_cmake() {
     # Explicitly OFF so a previous LTO=1 cache cannot silently persist.
     BASE_CMAKE_ARGS="$BASE_CMAKE_ARGS -DENABLE_LTO=OFF"
   fi
+  # The two kernel-speed flags: exact-integer or rounding-neutral, so the
+  # output does not depend on them, only the speed does.
+  for _f in ENABLE_MPOPCNT ENABLE_FP_CONTRACT_OFF; do
+    eval "_v=\${$_f:-1}"
+    if [ "$_v" = "0" ] || [ "$_v" = "OFF" ] || [ "$_v" = "off" ]; then
+      BASE_CMAKE_ARGS="$BASE_CMAKE_ARGS -D$_f=OFF"
+    else
+      BASE_CMAKE_ARGS="$BASE_CMAKE_ARGS -D$_f=ON"
+    fi
+  done
   if [ -n "$HTS_ROOT" ]; then
     echo "htslib detected at: $HTS_ROOT"
     BASE_CMAKE_ARGS="$BASE_CMAKE_ARGS -DHTSLIB_ROOT=$HTS_ROOT"

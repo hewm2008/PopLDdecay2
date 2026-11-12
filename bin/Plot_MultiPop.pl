@@ -25,6 +25,7 @@ sub usage
 	-measure   <s> :  use the [r2/D/both] to measure LD decay [r2]
 	-method    <s> :  Plot methold (MeanBin/HW/MedianBin/PercentileBin)[MeanBin]
 	-percent   <f> :  percent ratio(0-1) for PercentileBin method [0.5]
+	-color     <s> :  curve colours, R names or '#hex', e.g. "red,#0000FF"
 	-keepR         :  keep the R script for draw the LDdecay Fig
 
 	-help          :  show this help
@@ -32,7 +33,7 @@ sub usage
 USAGE
 }
 
-my ($help,$inList,$output,$bin1,$bin2,$break,$keepR,$maxX,$measure,$method,$percent);
+my ($help,$inList,$output,$bin1,$bin2,$break,$keepR,$maxX,$measure,$method,$percent,$color);
 
 
 GetOptions(
@@ -47,6 +48,7 @@ GetOptions(
 	"measure:s"=>\$measure,
 	"method:s"=>\$method,
 	"percent:s"=>\$percent,
+	"color:s"=>\$color,
 );
 
 if( defined($help) || (!defined($output))   ||  (!defined($inList)) )
@@ -207,6 +209,23 @@ $ColArry[117]="AntiqueWhite2";
 $ColArry[118]="AntiqueWhite3";
 $ColArry[119]="AntiqueWhite4";
 $ColArry[120]="Bisque1";
+
+# Optional user-supplied colour palette (reviewer 3, Q1).
+# Accepts R colour names and/or hex codes, comma (or whitespace) separated;
+# the list is cycled when more populations are plotted than colours given.
+#   perl Plot_MultiPop.pl ... -color "red,#0000FF,DarkGreen"
+if ( defined($color) && $color ne "" )
+{
+	my @user_colors = grep { length($_) } split(/[\s,]+/, $color);
+	if ( scalar(@user_colors) )
+	{
+		for (my $i=0; $i<scalar(@ColArry); $i++)
+		{
+			$ColArry[$i] = $user_colors[ $i % scalar(@user_colors) ];
+		}
+		print STDERR "[Plot_MultiPop] using user colour palette (".scalar(@user_colors)." colour(s), cycled)\n";
+	}
+}
 
 
 ########################################################################################################################

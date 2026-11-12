@@ -9,7 +9,7 @@ cd "$(dirname "$0")"
 # Support KEY=VALUE arguments (e.g. bash make.sh HTSLIB_ROOT=/path).
 for _arg in "$@"; do
   case "$_arg" in
-    HTSLIB_ROOT=*|CXX=*|NATIVE=*|LTO=*|KEEP_BUILD=*)
+    HTSLIB_ROOT=*|CXX=*|NATIVE=*|LTO=*|KEEP_BUILD=*|ENABLE_MPOPCNT=*|ENABLE_FP_CONTRACT_OFF=*)
       eval "export $_arg" ;;
     *) echo "WARNING: ignored unknown argument: $_arg" >&2 ;;
   esac
@@ -27,6 +27,21 @@ if [ -z "$HTS_ROOT" ]; then
       break
     fi
   done
+fi
+
+# htslib version, read from the HTS_VERSION macro (nothing is compiled and
+# nothing is run against the library). 1.16 is the floor (the fast path uses
+# tbx_seqnames()), 1.18 and newer are noticeably faster.
+HTS_VER=$(sed -n 's/^#define HTS_VERSION *\([0-9]*\).*/\1/p' \
+          "$HTS_ROOT/include/htslib/hts.h" 2>/dev/null | head -1)
+if [ -n "$HTS_VER" ]; then
+  if [ "$HTS_VER" -lt 101600 ]; then
+    echo "ERROR: htslib 1.16 or newer is required (found $HTS_VER) in $HTS_ROOT" >&2
+    exit 1
+  fi
+  if [ "$HTS_VER" -lt 101800 ]; then
+    echo "note: htslib is older than 1.18 ($HTS_VER): it works, but 1.18+ is faster" >&2
+  fi
 fi
 
 CLEAN_BUILD=1
@@ -155,6 +170,16 @@ build_with_cmake() {
     # Explicitly OFF so a previous LTO=1 cache cannot silently persist.
     BASE_CMAKE_ARGS="$BASE_CMAKE_ARGS -DENABLE_LTO=OFF"
   fi
+  # The two kernel-speed flags: exact-integer or rounding-neutral, so the
+  # output does not depend on them, only the speed does.
+  for _f in ENABLE_MPOPCNT ENABLE_FP_CONTRACT_OFF; do
+    eval "_v=\${$_f:-1}"
+    if [ "$_v" = "0" ] || [ "$_v" = "OFF" ] || [ "$_v" = "off" ]; then
+      BASE_CMAKE_ARGS="$BASE_CMAKE_ARGS -D$_f=OFF"
+    else
+      BASE_CMAKE_ARGS="$BASE_CMAKE_ARGS -D$_f=ON"
+    fi
+  done
   if [ -n "$HTS_ROOT" ]; then
     echo "htslib detected at: $HTS_ROOT"
     BASE_CMAKE_ARGS="$BASE_CMAKE_ARGS -DHTSLIB_ROOT=$HTS_ROOT"
@@ -181,32 +206,40 @@ build_with_cmake() {
   # Try static linking first if feasible.
   CMAKE_ARGS="$BASE_CMAKE_ARGS"
   _static_log=""
+  _dynamic_log=""
   if probe_static_libs; then
     echo "attempting static build..."
     _static_log=$(mktemp)
     if cmake -S . -B build $CMAKE_ARGS >"$_static_log" 2>&1 && \
-       cmake --build build -j"$(_get_jobs)" >"$_static_log" 2>&1; then
+       cmake --build build -j"$(_get_jobs)" >>"$_static_log" 2>&1; then
       rm -f "$_static_log"
       return 0
     fi
+    echo "static build failed; trying dynamic build..." >&2
     rm -rf build && mkdir -p build
   fi
 
   # Fallback: dynamic linking.
   CMAKE_ARGS="$BASE_CMAKE_ARGS -DHTSLIB_PREFER_STATIC=OFF"
   echo "attempting dynamic build..."
+  _dynamic_log=$(mktemp)
   # shellcheck disable=SC2086 # intentional word splitting of flag string
-  if cmake -S . -B build $CMAKE_ARGS && cmake --build build -j"$(_get_jobs)"; then
-    rm -f "$_static_log"
+  if cmake -S . -B build $CMAKE_ARGS >"$_dynamic_log" 2>&1 && \
+     cmake --build build -j"$(_get_jobs)" >>"$_dynamic_log" 2>&1; then
+    rm -f "$_static_log" "$_dynamic_log"
     return 0
   fi
 
-  # Both failed — show static error log if available.
+  echo "dynamic build failed." >&2
   if [ -n "$_static_log" ] && [ -s "$_static_log" ]; then
-    echo "--- static build log ---" >&2
-    cat "$_static_log" >&2
+    echo "--- static build log (last 20 lines) ---" >&2
+    tail -n 20 "$_static_log" >&2
   fi
-  rm -f "$_static_log"
+  if [ -s "$_dynamic_log" ]; then
+    echo "--- dynamic build log (last 20 lines) ---" >&2
+    tail -n 20 "$_dynamic_log" >&2
+  fi
+  rm -f "$_static_log" "$_dynamic_log"
   return 1
 }
 
@@ -229,6 +262,7 @@ build_with_make() {
 
   # Try static linking first if feasible.
   _static_log=""
+  _dynamic_log=""
   if probe_static_libs; then
     echo "attempting static build..."
     _static_log=$(mktemp)
@@ -236,22 +270,28 @@ build_with_make() {
       rm -f "$_static_log"
       return 0
     fi
+    echo "static build failed; trying dynamic build..." >&2
     make clean >/dev/null 2>&1 || true
   fi
 
   # Fallback: dynamic linking — force STATIC=0 so Makefile skips libhts.a.
   echo "attempting dynamic build..."
-  if make -j"$(_get_jobs)" NATIVE="$NATIVE" LTO="$LTO" HTS="$HTS_ROOT" STATIC=0; then
-    rm -f "$_static_log"
+  _dynamic_log=$(mktemp)
+  if make -j"$(_get_jobs)" NATIVE="$NATIVE" LTO="$LTO" HTS="$HTS_ROOT" STATIC=0 >"$_dynamic_log" 2>&1; then
+    rm -f "$_static_log" "$_dynamic_log"
     return 0
   fi
 
-  # Both failed — show static error log if available.
+  echo "dynamic build failed." >&2
   if [ -n "$_static_log" ] && [ -s "$_static_log" ]; then
-    echo "--- static build log ---" >&2
-    cat "$_static_log" >&2
+    echo "--- static build log (last 20 lines) ---" >&2
+    tail -n 20 "$_static_log" >&2
   fi
-  rm -f "$_static_log"
+  if [ -s "$_dynamic_log" ]; then
+    echo "--- dynamic build log (last 20 lines) ---" >&2
+    tail -n 20 "$_dynamic_log" >&2
+  fi
+  rm -f "$_static_log" "$_dynamic_log"
   return 1
 }
 
@@ -269,10 +309,10 @@ have_modern_cmake() {
 if have_modern_cmake; then
   if ! build_with_cmake; then
     echo "WARNING: cmake configure/build failed; falling back to the bundled Makefile." >&2
-    build_with_make
+    build_with_make || { echo "ERROR: build failed." >&2; exit 1; }
   fi
 else
-  build_with_make
+  build_with_make || { echo "ERROR: build failed." >&2; exit 1; }
 fi
 
 mkdir -p bin bin/mis
@@ -282,9 +322,48 @@ echo "built: $(pwd)/bin/PopLDdecay2"
 
 # Smoke-test BEFORE removing intermediates: only a binary that actually runs
 # counts as a successful install. 126/127 = exec or loader failure.
-./bin/PopLDdecay2 --help </dev/null >/dev/null 2>&1 && rc=0 || rc=$?
+_ld_path=""
+if [ -n "${HTS_ROOT:-}" ]; then
+  for d in "$HTS_ROOT/lib" "$HTS_ROOT/lib64"; do
+    [ -d "$d" ] && _ld_path="${_ld_path:+$_ld_path:}$d"
+  done
+fi
+if [ -z "$_ld_path" ] && command -v pkg-config >/dev/null 2>&1; then
+  _pc_libdir=$(pkg-config --variable=libdir htslib 2>/dev/null || true)
+  [ -n "$_pc_libdir" ] && _ld_path="$_pc_libdir"
+fi
+
+_smoke_plain() {
+  ./bin/PopLDdecay2 --help </dev/null >/dev/null 2>&1
+}
+
+_smoke_env() {
+  if [ "$(uname -s 2>/dev/null)" = "Darwin" ]; then
+    LD_LIBRARY_PATH="${_ld_path}${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
+    DYLD_LIBRARY_PATH="${_ld_path}${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}" \
+      ./bin/PopLDdecay2 --help </dev/null >/dev/null 2>&1
+  else
+    LD_LIBRARY_PATH="${_ld_path}${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
+      ./bin/PopLDdecay2 --help </dev/null >/dev/null 2>&1
+  fi
+}
+
+_smoke_plain && rc=0 || rc=$?
+if { [ "$rc" -eq 126 ] || [ "$rc" -eq 127 ]; } && [ -n "$_ld_path" ]; then
+  _smoke_env && rc2=0 || rc2=$?
+  if [ "$rc2" -eq 0 ]; then
+    echo "note: bin/PopLDdecay2 needs LD_LIBRARY_PATH=$_ld_path at runtime." >&2
+    rc=0
+  else
+    rc=$rc2
+  fi
+fi
 if [ "$rc" -eq 126 ] || [ "$rc" -eq 127 ]; then
   echo "ERROR: bin/PopLDdecay2 fails to execute (rc=$rc, missing/new lib?); keeping build/ for inspection." >&2
+  if command -v ldd >/dev/null 2>&1; then
+    ldd ./bin/PopLDdecay2 2>/dev/null | grep 'not found' >&2 || true
+  fi
+  [ -n "$_ld_path" ] && echo "  try: export LD_LIBRARY_PATH=$_ld_path:\$LD_LIBRARY_PATH" >&2
   exit 1
 fi
 

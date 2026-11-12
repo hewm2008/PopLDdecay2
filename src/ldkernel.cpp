@@ -1,9 +1,12 @@
 #include "ldkernel.h"
 
 #include <algorithm>
+#include <atomic>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <iostream>
+#include <mutex>
 #include <thread>
 
 namespace pld2 {
@@ -14,12 +17,41 @@ namespace {
 const double kLN10 = std::log(10.0);
 
 // ---------------------------------------------------------------------------
+// Progress counters, shared by the worker threads.
+//
+// The pair count is added once per left-partner site (not once per pair), so
+// the hot loop pays one relaxed atomic add per site, not per pair.
+// ---------------------------------------------------------------------------
+std::atomic<uint64_t> g_pairs{0};
+std::mutex g_progress_mu;
+std::chrono::steady_clock::time_point g_progress_start{};
+std::chrono::steady_clock::time_point g_progress_last{};
+
+void ld_progress_add(uint64_t pairs) {
+    g_pairs.fetch_add(pairs, std::memory_order_relaxed);
+}
+
+// Prints a progress line if at least 5 minutes have passed since the last
+// one: a long run would otherwise print thousands of them, and the elapsed
+// time in the line makes the rate readable anyway.
+void ld_progress_report(const std::string& what) {
+    const auto now = std::chrono::steady_clock::now();
+    std::lock_guard<std::mutex> lk(g_progress_mu);
+    if (now - g_progress_last < std::chrono::seconds(300)) return;
+    g_progress_last = now;
+    const double secs =
+        std::chrono::duration<double>(now - g_progress_start).count();
+    std::cerr << "[PopLDdecay2] " << what << " pairs="
+              << g_pairs.load(std::memory_order_relaxed) << " elapsed="
+              << static_cast<long long>(secs) << "s" << std::endl;
+}
+
+// ---------------------------------------------------------------------------
 // Per-pair formula replicas. Each reproduces the original cal_RR_* op-for-op
 // (Calculate.h) so double rounding is identical -> byte-identical output.
 // The 2x2 haplotype table is (n00=dde[0][0], n01=dde[0][1], n10=dde[1][0],
 // n11=dde[1][1]); ALL_count in the original is a double.
 // ---------------------------------------------------------------------------
-
 // cal_RR_MA (used by the original for OutType 3 and 5): parenthesized
 // Cal_A and r^2 = (D_A*D_A)/(Cal_A*Cal_B).
 inline bool cal_rr_ma(int n11, int n10, int n01, int n00, double& rr) {
@@ -400,10 +432,8 @@ inline void accumulate_pair(const ContigData& cd, size_t i, size_t j,
 //
 // OutType 1 (the default) is specialized via the template: cal_rr_ot1 + the
 // bin update are inlined directly in the pair loop instead of calling
-// accumulate_pair. (The M4 accumulate_pair refactor cost the 0.3.x inline
-// loop ~45%: bb T1 kernel 101s -> 147s; profiling the binary shows a
-// callq to accumulate_pair per pair.) Other OutTypes keep the shared
-// dispatch path.
+// accumulate_pair; other OutTypes keep the shared dispatch path. Why it
+// matters: doc/IMPLEMENTATION.md section 6.
 template <bool kOt1Inline>
 void accumulate_contig_nwords2_t(const ContigData& cd, int max_dist_bp,
                                  AccumSpec& spec, size_t core_n) {
@@ -420,10 +450,14 @@ void accumulate_contig_nwords2_t(const ContigData& cd, int max_dist_bp,
         const uint64_t* amis = a.miss.data();
         const uint64_t a0 = amin[0], a1 = amin[1];
         const uint64_t am0 = amis[0], am1 = amis[1];
+        size_t jend = n;
         for (size_t j = i + 1; j < n; ++j) {
             const SnpData& b = cd.snps[j];
             const int64_t dis = b.pos - pos_i;
-            if (dis > max_dist_bp) break;
+            if (dis > max_dist_bp) {
+                jend = j;
+                break;
+            }
             const uint64_t* bmin = b.minor.data();
             const uint64_t* bmis = b.miss.data();
             const uint64_t b0 = bmin[0], b1 = bmin[1];
@@ -448,6 +482,8 @@ void accumulate_contig_nwords2_t(const ContigData& cd, int max_dist_bp,
                 accumulate_pair(cd, i, j, dis, n11, n10, n01, n00, spec);
             }
         }
+        ld_progress_add(static_cast<uint64_t>(jend - i - 1));
+        if ((i & 0x3FF) == 0) ld_progress_report(cd.name);
     }
 }
 
@@ -477,10 +513,14 @@ void accumulate_contig_nwords1_t(const ContigData& cd, int max_dist_bp,
         const uint64_t* amis = a.miss.data();
         const uint64_t a0 = amin[0];
         const uint64_t am0 = amis[0];
+        size_t jend = n;
         for (size_t j = i + 1; j < n; ++j) {
             const SnpData& b = cd.snps[j];
             const int64_t dis = b.pos - pos_i;
-            if (dis > max_dist_bp) break;
+            if (dis > max_dist_bp) {
+                jend = j;
+                break;
+            }
             const uint64_t* bmin = b.minor.data();
             const uint64_t* bmis = b.miss.data();
             const uint64_t b0 = bmin[0];
@@ -500,6 +540,8 @@ void accumulate_contig_nwords1_t(const ContigData& cd, int max_dist_bp,
                 accumulate_pair(cd, i, j, dis, n11, n10, n01, n00, spec);
             }
         }
+        ld_progress_add(static_cast<uint64_t>(jend - i - 1));
+        if ((i & 0x3FF) == 0) ld_progress_report(cd.name);
     }
 }
 
@@ -534,38 +576,69 @@ void accumulate_contig_impl(const ContigData& cd, int max_dist_bp,
         const int64_t pos_i = a.pos;
         const uint64_t* amin = a.minor.data();
         const uint64_t* amis = a.miss.data();
+        size_t jend = n;
         for (size_t j = i + 1; j < n; ++j) {
             const SnpData& b = cd.snps[j];
             const int64_t dis = b.pos - pos_i;
-            if (dis > max_dist_bp) break;
+            if (dis > max_dist_bp) {
+                jend = j;
+                break;
+            }
             const uint64_t* bmin = b.minor.data();
             const uint64_t* bmis = b.miss.data();
 
             // 2x2 haplotype table via 4 popcounts per word.
             // n00=dde[0][0], n01=dde[0][1], n10=dde[1][0], n11=dde[1][1]
+            //
+            // Fast path: when neither site has a missing call, every
+            // haplotype is valid, so the table follows from ONE popcount per
+            // word: n11 = |minor_a & minor_b|, and the per-site minor counts
+            // give n10 = minor_a - n11, n01 = minor_b - n11 and n00 = the
+            // rest. The padding bits beyond 2*N are zero in the minor plane,
+            // so they are in no count. The four numbers are the same as the
+            // general path below, hence the same doubles and the same bytes.
             int n11 = 0, n10 = 0, n01 = 0, n00 = 0;
-            for (size_t w = 0; w < nwords; ++w) {
-                const uint64_t ai = amin[w];
-                const uint64_t bi = bmin[w];
-                const uint64_t valid = ~(amis[w] | bmis[w]);
-                // Mask off padding bits beyond the real 2*N haplotypes.
-                const uint64_t hapmask =
-                    (w + 1 < nwords)
-                        ? ~uint64_t(0)
-                        : (last_bits == 0 ? ~uint64_t(0)
-                                          : ((uint64_t(1) << last_bits) - 1));
-                n11 += __builtin_popcountll(ai & bi & hapmask);
-                n10 += __builtin_popcountll(ai & ~bi & valid & hapmask);
-                n01 += __builtin_popcountll(~ai & bi & valid & hapmask);
-                n00 += __builtin_popcountll(~ai & ~bi & valid & hapmask);
+            if (!a.has_missing && !b.has_missing) {
+                for (size_t w = 0; w < nwords; ++w) {
+                    n11 += __builtin_popcountll(amin[w] & bmin[w]);
+                }
+                n10 = a.minor_count - n11;
+                n01 = b.minor_count - n11;
+                n00 = static_cast<int>(cd.n_haplotypes) - n11 - n10 - n01;
+            } else {
+                for (size_t w = 0; w < nwords; ++w) {
+                    const uint64_t ai = amin[w];
+                    const uint64_t bi = bmin[w];
+                    const uint64_t valid = ~(amis[w] | bmis[w]);
+                    // Mask off padding bits beyond the real 2*N haplotypes.
+                    const uint64_t hapmask =
+                        (w + 1 < nwords)
+                            ? ~uint64_t(0)
+                            : (last_bits == 0 ? ~uint64_t(0)
+                                              : ((uint64_t(1) << last_bits) - 1));
+                    n11 += __builtin_popcountll(ai & bi & hapmask);
+                    n10 += __builtin_popcountll(ai & ~bi & valid & hapmask);
+                    n01 += __builtin_popcountll(~ai & bi & valid & hapmask);
+                    n00 += __builtin_popcountll(~ai & ~bi & valid & hapmask);
+                }
             }
 
             accumulate_pair(cd, i, j, dis, n11, n10, n01, n00, spec);
         }
+        ld_progress_add(static_cast<uint64_t>(jend - i - 1));
+        if ((i & 0x3FF) == 0) ld_progress_report(cd.name);
     }
 }
 
 }  // namespace
+
+void ld_progress_reset() {
+    g_pairs.store(0, std::memory_order_relaxed);
+    std::lock_guard<std::mutex> lk(g_progress_mu);
+    const auto now = std::chrono::steady_clock::now();
+    g_progress_start = now;
+    g_progress_last = now;
+}
 
 void accumulate_contig(const ContigData& cd, int max_dist_bp, AccumSpec& spec,
                        size_t core_n, const std::string& part_label) {
@@ -575,19 +648,46 @@ void accumulate_contig(const ContigData& cd, int max_dist_bp, AccumSpec& spec,
     accumulate_contig_impl(cd, max_dist_bp, spec, core_n);
 }
 
+void init_accum(AccumSpec& spec, int out_type, size_t max_dist_bp) {
+    const size_t nbins = max_dist_bp + 1;
+    spec.out_type = out_type;
+    spec.bins.assign(nbins, Bin{});
+    if (out_type == 4 || out_type == 5) {
+        spec.hist_rr.assign(nbins * 101, 0);
+        spec.hist_d.assign((out_type == 4) ? nbins * 101 : 0, 0);
+    }
+    if (out_type == 3 || out_type == 6 || out_type == 7 || out_type == 8) {
+        spec.ld = std::make_unique<LdWriter>(out_type);
+    }
+}
+
+void cap_histogram_workers(size_t& nworkers, int out_type) {
+    if ((out_type == 4 || out_type == 5) && nworkers > 4) {
+        std::cerr << "OutType 4/5 histogram mode: capping accumulation workers "
+                     "to 4 (histogram is ~121 MB/worker at MaxDist=300 kb)\n";
+        nworkers = 4;
+    }
+}
+
+void merge_partial(AccumSpec& out, const AccumSpec& partial) {
+    for (size_t d = 0; d < out.bins.size(); ++d) {
+        out.bins[d].count += partial.bins[d].count;
+        out.bins[d].sumRR += partial.bins[d].sumRR;
+        out.bins[d].sumD += partial.bins[d].sumD;
+    }
+    if (out.out_type == 4 || out.out_type == 5) {
+        for (size_t k = 0; k < out.hist_rr.size(); ++k) {
+            out.hist_rr[k] += partial.hist_rr[k];
+            if (out.out_type == 4) out.hist_d[k] += partial.hist_d[k];
+        }
+    }
+    if (out.ld && partial.ld) out.ld->absorb(*partial.ld);
+}
+
 void compute_bins(const std::vector<ContigData>& contigs, int max_dist_bp,
                   int nthreads, AccumSpec& out) {
-    const size_t nbins = static_cast<size_t>(max_dist_bp) + 1;
-    const bool hist_mode = (out.out_type == 4 || out.out_type == 5);
-    out.bins.assign(nbins, Bin{});
-    if (hist_mode) {
-        out.hist_rr.assign(nbins * 101, 0);
-        out.hist_d.assign((out.out_type == 4) ? nbins * 101 : 0, 0);
-    }
-    if (out.out_type == 3 || out.out_type == 6 || out.out_type == 7 ||
-        out.out_type == 8) {
-        out.ld = std::make_unique<LdWriter>(out.out_type);
-    }
+    ld_progress_reset();
+    init_accum(out, out.out_type, max_dist_bp);
 
     std::vector<size_t> work;
     for (size_t i = 0; i < contigs.size(); ++i) {
@@ -603,14 +703,7 @@ void compute_bins(const std::vector<ContigData>& contigs, int max_dist_bp,
 
     // Greedy largest-first assignment to the least-loaded worker.
     size_t nworkers = std::min<size_t>(static_cast<size_t>(nthreads), work.size());
-    if (hist_mode && nworkers > 4) {
-        // OutType 4/5 keeps a (MaxDist+1)*101 int histogram per worker
-        // (~121 MB/worker at MaxDist=300 kb). Cap the worker count to bound
-        // memory; integer sums merge in any order, so output is byte-identical.
-        std::cerr << "OutType 4/5 histogram mode: capping accumulation workers "
-                     "to 4 (histogram is ~121 MB/worker at MaxDist=300 kb)\n";
-        nworkers = 4;
-    }
+    cap_histogram_workers(nworkers, out.out_type);
     std::vector<size_t> order = work;
     std::sort(order.begin(), order.end(), [&](size_t x, size_t y) {
         return contigs[x].snps.size() > contigs[y].snps.size();
@@ -625,14 +718,8 @@ void compute_bins(const std::vector<ContigData>& contigs, int max_dist_bp,
 
     std::vector<AccumSpec> partial(nworkers);
     for (auto& p : partial) {
-        p.out_type = out.out_type;
+        init_accum(p, out.out_type, max_dist_bp);
         p.nhaplo = out.nhaplo;
-        p.bins.assign(nbins, Bin{});
-        if (hist_mode) {
-            p.hist_rr.assign(nbins * 101, 0);
-            if (out.out_type == 4) p.hist_d.assign(nbins * 101, 0);
-        }
-        if (out.ld) p.ld = std::make_unique<LdWriter>(out.out_type);
     }
 
     std::vector<std::thread> pool;
@@ -649,20 +736,7 @@ void compute_bins(const std::vector<ContigData>& contigs, int max_dist_bp,
 
     // Merge partials in worker order (deterministic). Integer counts exact;
     // double sums ordered per worker (see ldkernel.h note).
-    for (size_t w = 0; w < nworkers; ++w) {
-        for (size_t d = 0; d < nbins; ++d) {
-            out.bins[d].count += partial[w].bins[d].count;
-            out.bins[d].sumRR += partial[w].bins[d].sumRR;
-            out.bins[d].sumD += partial[w].bins[d].sumD;
-        }
-        if (hist_mode) {
-            for (size_t k = 0; k < nbins * 101; ++k) {
-                out.hist_rr[k] += partial[w].hist_rr[k];
-                if (out.out_type == 4) out.hist_d[k] += partial[w].hist_d[k];
-            }
-        }
-        if (out.ld && partial[w].ld) out.ld->absorb(*partial[w].ld);
-    }
+    for (size_t w = 0; w < nworkers; ++w) merge_partial(out, partial[w]);
 }
 
 }  // namespace pld2

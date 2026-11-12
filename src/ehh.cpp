@@ -9,6 +9,9 @@
 #include <unordered_map>
 #include <vector>
 
+#include "cli.h"
+#include "rowfmt.h"
+#include "textutil.h"
 #include "types.h"
 
 namespace pld2 {
@@ -31,18 +34,6 @@ void split_colon(const std::string& s, std::vector<std::string>& out) {
 // Single-quotes a string for use in a system() shell command (embedded single
 // quotes become the POSIX '\'' splice). Handles spaces and shell metacharacters
 // in user-supplied output prefixes.
-std::string shell_quote(const std::string& s) {
-    std::string out = "'";
-    for (char c : s) {
-        if (c == '\'') {
-            out += "'\\''";
-        } else {
-            out.push_back(c);
-        }
-    }
-    out += "'";
-    return out;
-}
 
 // Escapes a string for embedding inside a double-quoted R string literal
 // (backslash and double-quote only).
@@ -79,12 +70,17 @@ void count_groups(const std::vector<std::string>& haplotypes, int64_t& fengzi,
 
 }  // namespace
 
+// The site must be a whole number: atoi() cannot tell "abc" from 0, so a typo
+// in -EHH would silently move the core site to 0 instead of being reported.
 bool parse_ehh(const std::string& spec, EhhParams& out) {
     std::vector<std::string> tok;
     split_colon(spec, tok);
     if (tok.size() < 2) return false;
+    long long site = 0;
+    if (!parse_int_strict(tok[1].c_str(), site)) return false;
+    if (site < 0) return false;  // a position cannot be negative
     out.chr = tok[0];
-    out.start_site = std::atoi(tok[1].c_str());
+    out.start_site = static_cast<int64_t>(site);
     return true;
 }
 
@@ -218,15 +214,34 @@ int run_ehh(const std::vector<ContigData>& contigs, const EhhParams& p,
             out += p.chr + "\t" + std::to_string(s.pos) + "\t" +
                    std::to_string(dis) + "\t0.0000\t0.0000\t0.0000\n";
         } else {
-            std::snprintf(row, sizeof(row), "%s\t%lld\t%lld\t%.4f\t%.4f\t%.4f\n",
-                          p.chr.c_str(), static_cast<long long>(s.pos),
-                          static_cast<long long>(dis), it->second.first,
-                          it->second.second, it->second.first - it->second.second);
-            out += row;
+            // append_row, not "out += row": a chromosome name longer than the
+            // stack buffer would otherwise be cut off silently, and the row
+            // would lose its trailing columns.
+            if (!append_row(out, row, sizeof(row),
+                            "%s\t%lld\t%lld\t%.4f\t%.4f\t%.4f\n", p.chr.c_str(),
+                            static_cast<long long>(s.pos),
+                            static_cast<long long>(dis), it->second.first,
+                            it->second.second,
+                            it->second.first - it->second.second)) {
+                std::cerr << "error: could not format an EHH row" << std::endl;
+                gzclose(OUT);
+                std::remove(out_path.c_str());
+                return 0;
+            }
         }
     }
-    gzwrite(OUT, out.data(), static_cast<unsigned>(out.size()));
-    gzclose(OUT);
+    if (gzwrite(OUT, out.data(), static_cast<unsigned>(out.size())) !=
+        static_cast<int>(out.size())) {
+        std::cerr << "write OUT File error: " << out_path << std::endl;
+        gzclose(OUT);
+        std::remove(out_path.c_str());
+        return 0;
+    }
+    if (gzclose(OUT) != Z_OK) {
+        std::cerr << "write OUT File error: " << out_path << std::endl;
+        std::remove(out_path.c_str());
+        return 0;
+    }
 
     // ---------- plot EHH (replicates the original's Rscript section) ----------
     // popen can fail (fork/exec failure); bail out of the R plot step then,
@@ -276,10 +291,19 @@ int run_ehh(const std::vector<ContigData>& contigs, const EhhParams& p,
         if (tf) {
             cc += " ; rm -rf " + shell_quote(OutPlotr);
         }
-        std::system(cc.c_str());
+        if (std::system(cc.c_str()) != 0) {
+            // The table itself is already written; only the optional figure
+            // failed. Say so instead of letting the caller believe the plot
+            // was made.
+            std::cerr << "warning: the EHH figure could not be drawn ("
+                      << binPath << " failed); the .ehh.gz table is complete"
+                      << std::endl;
+        }
     }
 
-    std::system(("rm -rf " + shell_quote(prefix + ".stat.gz")).c_str());
+    // The stat file is not produced in -EHH mode: the original removes it
+    // again after the EHH run. std::remove does that without a shell.
+    std::remove((prefix + ".stat.gz").c_str());
 
     return 1;
 }

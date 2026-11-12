@@ -1,4 +1,5 @@
 #include "subpop.h"
+#include "textutil.h"
 
 #include <fstream>
 #include <iostream>
@@ -12,22 +13,6 @@ namespace pld2 {
 namespace {
 
 // Tokenization on space/tab (replicates split(line,inf," \t")).
-std::vector<std::string> split_ws(const std::string& line) {
-    std::vector<std::string> toks;
-    std::string cur;
-    for (char c : line) {
-        if (c == ' ' || c == '\t') {
-            if (!cur.empty()) {
-                toks.push_back(cur);
-                cur.clear();
-            }
-        } else {
-            cur.push_back(c);
-        }
-    }
-    if (!cur.empty()) toks.push_back(cur);
-    return toks;
-}
 
 // Basename with the last extension stripped ("/a/b/popA.list" -> "popA").
 std::string base_name(const std::string& p) {
@@ -122,8 +107,6 @@ bool resolve_subpop_header(const std::vector<std::string>& header,
         std::map<std::string, int> occ;
         for (const std::string& n : spec.names) occ[n] = 0;
         SubPop sp;
-        sp.active = true;
-        sp.label = spec.label;
         for (size_t j = static_cast<size_t>(sample_start); j < header.size(); ++j) {
             auto it = occ.find(header[j]);
             if (it != occ.end()) {

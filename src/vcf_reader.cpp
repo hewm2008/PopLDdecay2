@@ -1,3 +1,4 @@
+#include "textutil.h"
 #include "vcf_reader.h"
 
 #include <algorithm>
@@ -27,22 +28,6 @@ namespace pld2 {
 namespace {
 
 // Header tokenization on space/tab (replicates split(line,inf," \t")).
-std::vector<std::string> split_ws(const std::string& line) {
-    std::vector<std::string> toks;
-    std::string cur;
-    for (char c : line) {
-        if (c == ' ' || c == '\t') {
-            if (!cur.empty()) {
-                toks.push_back(cur);
-                cur.clear();
-            }
-        } else {
-            cur.push_back(c);
-        }
-    }
-    if (!cur.empty()) toks.push_back(cur);
-    return toks;
-}
 
 // Reads raw allele chars at index 0 and 2 of a token (replicates spline[jj][0]
 // and spline[jj][2] reads, including the '0/.' / '.' counting quirks).
@@ -133,6 +118,16 @@ struct ChrBuf {
 // Empty column set used when no SubPop groups are given (all samples).
 const std::vector<int> kEmptyCols;
 
+bool single_allele_gt(const LineTokens& tk, int j, char& allele) {
+    const char* p = tk.data(j);
+    const size_t n = tk.length(j);
+    size_t i = 0;
+    while (i < n && p[i] != ':') ++i;
+    if (i != 1) return false;
+    allele = p[0];
+    return true;
+}
+
 // Builds the encoded genotype for one site into `enc` and appends the packed
 // words to each group buffer. Replicates original Read_VCF_IN / Read_VCF_IN_Phase
 // filters and encoding exactly. When SubPop groups are given, filters + packing
@@ -146,6 +141,7 @@ const std::vector<int> kEmptyCols;
 // overlapping regions to the region with the largest start, exactly like the
 // fallback read_vcf path. Without this, a site shared by overlapping regions
 // would be processed once per containing task and its pairs double-counted.
+template <bool kPloidyAware>
 bool process_data_line(const char* line, size_t line_len,
                        const std::vector<SubPop>& subs, int nsamples,
                        bool phased, const Options& opt,
@@ -208,6 +204,18 @@ bool process_data_line(const char* line, size_t line_len,
         };
         for (int k = 0; k < n_eff; ++k) {
             const int j = sample_cols.empty() ? (9 + k) : sample_cols[k];
+            if constexpr (kPloidyAware) {
+                char hap = '\0';
+                if (single_allele_gt(tk, j, hap)) {
+                    if (hap == '.') {
+                        miss_count++;
+                    } else {
+                        add(hap);
+                        add(hap);
+                    }
+                    continue;
+                }
+            }
             char c0 = tk.ch0(j);
             if (c0 == '.') {
                 miss_count++;
@@ -256,23 +264,37 @@ bool process_data_line(const char* line, size_t line_len,
         buf.miss.resize(wbase + nwords);
         for (int k = 0; k < n_eff; ++k) {
             const int j = sample_cols.empty() ? (9 + k) : sample_cols[k];
-            char c0 = tk.ch0(j);
-            char a, b;
-            if (c0 == '.') {
-                a = 'N';
-                b = 'N';
-            } else {
-                char c2 = tk.ch2(j);
-                if (phased) {
-                    a = c0;
-                    b = c2;
+            char a = 'N';
+            char b = 'N';
+            bool handled = false;
+            if constexpr (kPloidyAware) {
+                char hap = '\0';
+                if (single_allele_gt(tk, j, hap)) {
+                    handled = true;
+                    if (hap != '.') {
+                        a = hap;
+                        b = hap;
+                    }
+                }
+            }
+            if (!handled) {
+                char c0 = tk.ch0(j);
+                if (c0 == '.') {
+                    a = 'N';
+                    b = 'N';
                 } else {
-                    if (c0 != c2) {
-                        a = best_base;
-                        b = sed_base;
-                    } else {
+                    char c2 = tk.ch2(j);
+                    if (phased) {
                         a = c0;
                         b = c2;
+                    } else {
+                        if (c0 != c2) {
+                            a = best_base;
+                            b = sed_base;
+                        } else {
+                            a = c0;
+                            b = c2;
+                        }
                     }
                 }
             }
@@ -348,6 +370,8 @@ std::vector<ContigData> build_contigs(std::map<std::string, ChrBuf>& raw,
             sd.pos = buf.pos[i];
             sd.minor.assign(cd.arena, &buf.minor[i * nwords], nwords);
             sd.miss.assign(cd.arena, &buf.miss[i * nwords], nwords);
+            site_counts(sd.minor.data(), sd.miss.data(), nwords,
+                        sd.minor_count, sd.has_missing);
             cd.snps.push_back(std::move(sd));
         }
         out.push_back(std::move(cd));
@@ -357,6 +381,77 @@ std::vector<ContigData> build_contigs(std::map<std::string, ChrBuf>& raw,
 }
 
 }  // namespace
+
+VcfPloidyInfo detect_vcf_ploidy(const std::string& path, int max_sites) {
+    VcfPloidyInfo info;
+    if (max_sites < 1) max_sites = 1;
+    htsFile* fp = hts_open(path.c_str(), "r");
+    if (!fp) return info;
+
+    std::vector<std::string> samples;
+    int nsamples = -1;
+    std::vector<size_t> offs;
+    kstring_t line = {0, 0, 0};
+    while (info.sites_checked < max_sites &&
+           hts_getline(fp, '\n', &line) >= 0) {
+        if (line.l == 0) continue;
+        if (line.s[0] == '#') {
+            if (line.l > 1 && line.s[1] == '#') continue;
+            std::string l(line.s, line.l);
+            std::vector<std::string> toks = split_ws(l);
+            if (toks.empty() || toks[0] != "#CHROM") continue;
+            nsamples = static_cast<int>(toks.size()) - 9;
+            if (nsamples < 0) nsamples = 0;
+            samples.assign(toks.begin() + std::min<size_t>(9, toks.size()),
+                           toks.end());
+            continue;
+        }
+        if (nsamples < 0) break;
+        if (nsamples == 0) {
+            info.sites_checked++;
+            continue;
+        }
+
+        LineTokens tk(line.s, line.l, offs);
+        for (int k = 0; k < nsamples; ++k) {
+            const int j = 9 + k;
+            const char* p = tk.data(j);
+            const size_t n = tk.length(j);
+            size_t gt_end = 0;
+            while (gt_end < n && p[gt_end] != ':') ++gt_end;
+            if (gt_end == 0) continue;
+
+            int seps = 0;
+            bool all_missing = true;
+            for (size_t i = 0; i < gt_end; ++i) {
+                const char c = p[i];
+                if (c == '/' || c == '|') {
+                    seps++;
+                } else if (c != '.') {
+                    all_missing = false;
+                }
+            }
+            if (all_missing) continue;
+
+            const std::string& name =
+                (static_cast<size_t>(k) < samples.size()) ? samples[k]
+                                                          : std::string();
+            if (seps == 0) {
+                if (gt_end == 1) {
+                    if (!info.any_haploid) info.haploid_sample = name;
+                    info.any_haploid = true;
+                }
+            } else if (seps > 1) {
+                if (!info.any_polyploid) info.polyploid_sample = name;
+                info.any_polyploid = true;
+            }
+        }
+        info.sites_checked++;
+    }
+    hts_close(fp);
+    info.ploidy_aware = info.any_haploid || info.any_polyploid;
+    return info;
+}
 
 int read_vcf(const std::string& path, const Options& opt,
              std::vector<std::vector<ContigData>>& outs, ReadStats& stats,
@@ -440,8 +535,15 @@ int read_vcf(const std::string& path, const Options& opt,
             if (label.empty()) continue;
             gbufs.clear();
             for (size_t g = 0; g < nbufs; ++g) gbufs.push_back(&raws[g][label]);
-            if (process_data_line(line.s, line.l, subs, nsamples, phased, opt,
-                                  gbufs, stats, offs)) {
+            bool kept;
+            if (opt.vcf_ploidy_aware) {
+                kept = process_data_line<true>(line.s, line.l, subs, nsamples,
+                                               phased, opt, gbufs, stats, offs);
+            } else {
+                kept = process_data_line<false>(line.s, line.l, subs, nsamples,
+                                                phased, opt, gbufs, stats, offs);
+            }
+            if (kept) {
                 if (filt) gzwrite(filt, line.s, static_cast<unsigned>(line.l));
                 if (filt) gzputc(filt, '\n');
             }
@@ -450,8 +552,15 @@ int read_vcf(const std::string& path, const Options& opt,
             if (chrom.empty()) continue;
             gbufs.clear();
             for (size_t g = 0; g < nbufs; ++g) gbufs.push_back(&raws[g][chrom]);
-            if (process_data_line(line.s, line.l, subs, nsamples, phased, opt,
-                                  gbufs, stats, offs)) {
+            bool kept;
+            if (opt.vcf_ploidy_aware) {
+                kept = process_data_line<true>(line.s, line.l, subs, nsamples,
+                                               phased, opt, gbufs, stats, offs);
+            } else {
+                kept = process_data_line<false>(line.s, line.l, subs, nsamples,
+                                                phased, opt, gbufs, stats, offs);
+            }
+            if (kept) {
                 if (filt) gzwrite(filt, line.s, static_cast<unsigned>(line.l));
                 if (filt) gzputc(filt, '\n');
             }
@@ -478,21 +587,11 @@ bool compute_bins_indexed(const std::string& path, const Options& opt,
     const auto ms = [](const Clock::time_point& t) {
         return std::chrono::duration<double, std::milli>(Clock::now() - t).count();
     };
+    ld_progress_reset();
 
     const size_t nbufs = subs.empty() ? 1 : subs.size();
     const int out_type = outs[0].out_type;
-    const size_t nbins = static_cast<size_t>(max_dist_bp) + 1;
-    const bool hist_mode = (out_type == 4 || out_type == 5);
-    for (AccumSpec& out : outs) {
-        out.bins.assign(nbins, Bin{});
-        if (hist_mode) {
-            out.hist_rr.assign(nbins * 101, 0);
-            out.hist_d.assign((out_type == 4) ? nbins * 101 : 0, 0);
-        }
-        if (out_type == 3 || out_type == 6 || out_type == 7 || out_type == 8) {
-            out.ld = std::make_unique<LdWriter>(out_type);
-        }
-    }
+    for (AccumSpec& out : outs) init_accum(out, out_type, max_dist_bp);
 
     // ---- prelude: header -> nsamples, contig list, phase (replicates old tool) ----
     htsFile* pre = hts_open(path.c_str(), "r");
@@ -716,14 +815,7 @@ bool compute_bins_indexed(const std::string& path, const Options& opt,
         return false;
     }
     size_t nworkers = std::min<size_t>(static_cast<size_t>(opt.threads), tasks.size());
-    if (hist_mode && nworkers > 4) {
-        // OutType 4/5 keeps a (MaxDist+1)*101 int histogram per worker
-        // (~121 MB/worker at MaxDist=300 kb). Cap the worker count to bound
-        // memory; integer sums merge in any order, so output is byte-identical.
-        std::cerr << "OutType 4/5 histogram mode: capping accumulation workers "
-                     "to 4 (histogram is ~121 MB/worker at MaxDist=300 kb)\n";
-        nworkers = 4;
-    }
+    cap_histogram_workers(nworkers, out_type);
     if (timing) std::cerr << "[timing] fastpath prelude=" << ms(t0) << "ms  nworkers=" << nworkers
                           << " nsamples=" << nsamples << " phased=" << phased
                           << " tasks=" << tasks.size() << "\n";
@@ -734,16 +826,8 @@ bool compute_bins_indexed(const std::string& path, const Options& opt,
     for (auto& pw : partial) {
         for (size_t g = 0; g < nbufs; ++g) {
             AccumSpec& p = pw[g];
-            p.out_type = out_type;
+            init_accum(p, out_type, max_dist_bp);
             p.nhaplo = nhaplo[g];
-            p.bins.assign(nbins, Bin{});
-            if (hist_mode) {
-                p.hist_rr.assign(nbins * 101, 0);
-                if (out_type == 4) p.hist_d.assign(nbins * 101, 0);
-            }
-            if (out_type == 3 || out_type == 6 || out_type == 7 || out_type == 8) {
-                p.ld = std::make_unique<LdWriter>(out_type);
-            }
         }
     }
     std::vector<ReadStats> wstats(nworkers);
@@ -787,10 +871,19 @@ bool compute_bins_indexed(const std::string& path, const Options& opt,
             int ret;
             while ((ret = tbx_itr_next(fp, tbx, itr, &ln)) >= 0) {
                 if (ln.l == 0) continue;
-                process_data_line(ln.s, ln.l, subs, nsamples, phased, opt, gbufs,
-                                  wstats[wid], offs,
-                                  region_filter ? &rset : nullptr,
-                                  region_filter ? &tasks[ci].row_label : nullptr);
+                if (opt.vcf_ploidy_aware) {
+                    process_data_line<true>(
+                        ln.s, ln.l, subs, nsamples, phased, opt, gbufs,
+                        wstats[wid], offs,
+                        region_filter ? &rset : nullptr,
+                        region_filter ? &tasks[ci].row_label : nullptr);
+                } else {
+                    process_data_line<false>(
+                        ln.s, ln.l, subs, nsamples, phased, opt, gbufs,
+                        wstats[wid], offs,
+                        region_filter ? &rset : nullptr,
+                        region_filter ? &tasks[ci].row_label : nullptr);
+                }
             }
             hts_itr_destroy(itr);
 
@@ -813,6 +906,8 @@ bool compute_bins_indexed(const std::string& path, const Options& opt,
                     sd.pos = bufs[g].pos[i];
                     sd.minor.assign(cd.arena, &bufs[g].minor[i * nwords[g]], nwords[g]);
                     sd.miss.assign(cd.arena, &bufs[g].miss[i * nwords[g]], nwords[g]);
+                    site_counts(sd.minor.data(), sd.miss.data(), nwords[g],
+                                sd.minor_count, sd.has_missing);
                     cd.snps.push_back(std::move(sd));
                 }
                 // Shard left-site core: pairs are owned by the shard whose core
@@ -857,20 +952,7 @@ bool compute_bins_indexed(const std::string& path, const Options& opt,
     // ordered per worker, see ldkernel.h note).
     for (size_t g = 0; g < nbufs; ++g) {
         AccumSpec& out = outs[g];
-        for (size_t w = 0; w < nworkers; ++w) {
-            for (size_t d = 0; d < nbins; ++d) {
-                out.bins[d].count += partial[w][g].bins[d].count;
-                out.bins[d].sumRR += partial[w][g].bins[d].sumRR;
-                out.bins[d].sumD += partial[w][g].bins[d].sumD;
-            }
-            if (hist_mode) {
-                for (size_t k = 0; k < nbins * 101; ++k) {
-                    out.hist_rr[k] += partial[w][g].hist_rr[k];
-                    if (out_type == 4) out.hist_d[k] += partial[w][g].hist_d[k];
-                }
-            }
-            if (out.ld && partial[w][g].ld) out.ld->absorb(*partial[w][g].ld);
-        }
+        for (size_t w = 0; w < nworkers; ++w) merge_partial(out, partial[w][g]);
     }
     for (size_t w = 0; w < nworkers; ++w) {
         stats.sites_in += wstats[w].sites_in;

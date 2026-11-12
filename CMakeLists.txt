@@ -1,12 +1,66 @@
-cmake_minimum_required(VERSION 2.8.12)
+# 3.5 is the lowest version CMake 4 still accepts (CMake 4.0 removed the
+# compatibility with anything older, and 3.27 warns about it). The range
+# syntax (3.12+) sets the policy version to 3.28, so a current cmake does
+# not warn about the policies introduced in between; older cmake ignores the
+# "...3.28" part and behaves as 3.5.
+cmake_minimum_required(VERSION 3.5...3.28)
 project(PopLDdecay2 CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# CMAKE_CXX_STANDARD 17 is only honoured from CMake 3.8 on, and the code does
+# need C++17 (if constexpr in ldkernel.cpp, <string_view> in region.h). On an
+# older CMake the standard property above is silently ignored and the compiler
+# falls back to its default (gnu++14 on GCC 7/8), which fails to compile. Pass
+# the flag directly in that case.
+if(CMAKE_VERSION VERSION_LESS 3.8)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17")
+endif()
+
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
+endif()
+
+include(CheckCXXSourceCompiles)
+
+# ---------------------------------------------------------------------------
+# Build flags that decide how fast the LD kernel runs. Neither of them changes
+# a single output byte; both are checked so that an old or unusual compiler is
+# simply left alone.
+# ---------------------------------------------------------------------------
+
+# The LD kernel counts haplotypes with __builtin_popcountll. Whether that is
+# the hardware POPCNT instruction or a software sequence depends on the
+# compiler's default target, not on ours: a strict x86-64 baseline (and
+# clang's default) emit software code, and the kernel measured 3.4x slower
+# that way. popcount is exact integer arithmetic, so the instruction changes
+# the speed and not one output byte. AArch64 needs nothing: cnt is a base
+# instruction.
+option(ENABLE_MPOPCNT "Use the hardware POPCNT instruction on x86" ON)
+if(ENABLE_MPOPCNT AND CMAKE_SYSTEM_PROCESSOR MATCHES "x86|amd64|AMD64|i[3-6]86")
+  set(CMAKE_REQUIRED_FLAGS "-mpopcnt")
+  check_cxx_source_compiles("int main(){return __builtin_popcountll(1)==1?0:1;}" HAVE_MPOPCNT)
+  unset(CMAKE_REQUIRED_FLAGS)
+  if(HAVE_MPOPCNT)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mpopcnt")
+  else()
+    message(STATUS "no -mpopcnt; the kernel will use the software popcount")
+  endif()
+endif()
+
+# FP contraction (a*b+c -> fma) changes the rounding, and whether the compiler
+# does it depends on its default target too (x86-64-v3, or -march=native).
+# Turning it off makes the output independent of that.
+option(ENABLE_FP_CONTRACT_OFF "Disable FP contraction" ON)
+if(ENABLE_FP_CONTRACT_OFF)
+  set(CMAKE_REQUIRED_FLAGS "-ffp-contract=off")
+  check_cxx_source_compiles("int main(){return 0;}" HAVE_FFP_CONTRACT_OFF)
+  unset(CMAKE_REQUIRED_FLAGS)
+  if(HAVE_FFP_CONTRACT_OFF)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ffp-contract=off")
+  endif()
 endif()
 
 # Optional native-tuned build (-march=native): enables ISA-specific
@@ -38,16 +92,47 @@ set(HTSLIB_INCLUDE_DIRS "")
 set(HTSLIB_LINK_LIBRARIES "")
 set(HTSLIB_LINK_DIRS "")
 
+function(_pld2_find_htslib_libraries root out_static out_shared)
+  set(_static "")
+  set(_shared "")
+  foreach(_dir "${root}/lib" "${root}/lib64")
+    if(NOT _static AND EXISTS "${_dir}/libhts.a")
+      set(_static "${_dir}/libhts.a")
+    endif()
+    if(NOT _shared)
+      if(EXISTS "${_dir}/libhts.so")
+        set(_shared "${_dir}/libhts.so")
+      elseif(EXISTS "${_dir}/libhts.dylib")
+        set(_shared "${_dir}/libhts.dylib")
+      else()
+        file(GLOB _candidates "${_dir}/libhts.so.*")
+        if(_candidates)
+          list(SORT _candidates)
+          list(GET _candidates 0 _shared)
+        endif()
+      endif()
+    endif()
+  endforeach()
+  set(${out_static} "${_static}" PARENT_SCOPE)
+  set(${out_shared} "${_shared}" PARENT_SCOPE)
+endfunction()
+
 if(HTSLIB_ROOT)
   set(HTSLIB_INCLUDE_DIRS "${HTSLIB_ROOT}/include")
-  if(EXISTS "${HTSLIB_ROOT}/lib/libhts.a")
-    set(HTSLIB_LINK_LIBRARIES "${HTSLIB_ROOT}/lib/libhts.a")
+  _pld2_find_htslib_libraries("${HTSLIB_ROOT}" _hts_static _hts_shared)
+  if(HTSLIB_PREFER_STATIC AND _hts_static)
+    set(HTSLIB_LINK_LIBRARIES "${_hts_static}")
     set(HTSLIB_FOUND TRUE)
     set(HTSLIB_IS_STATIC TRUE)
-  elseif(EXISTS "${HTSLIB_ROOT}/lib/libhts.so")
-    set(HTSLIB_LINK_LIBRARIES "${HTSLIB_ROOT}/lib/libhts.so")
-    set(HTSLIB_LINK_DIRS "${HTSLIB_ROOT}/lib")
+  elseif(_hts_shared)
+    set(HTSLIB_LINK_LIBRARIES "${_hts_shared}")
+    get_filename_component(_hts_libdir "${_hts_shared}" DIRECTORY)
+    set(HTSLIB_LINK_DIRS "${_hts_libdir}")
     set(HTSLIB_FOUND TRUE)
+  elseif(_hts_static)
+    set(HTSLIB_LINK_LIBRARIES "${_hts_static}")
+    set(HTSLIB_FOUND TRUE)
+    set(HTSLIB_IS_STATIC TRUE)
   endif()
 endif()
 
@@ -60,23 +145,30 @@ if(NOT HTSLIB_FOUND)
     set(HTSLIB_FOUND TRUE)
     set(HTSLIB_INCLUDE_DIRS ${PC_HTSLIB_INCLUDE_DIRS})
     set(HTSLIB_LINK_LIBRARIES ${PC_HTSLIB_LINK_LIBRARIES})
+    set(HTSLIB_LINK_DIRS ${PC_HTSLIB_LIBRARY_DIRS})
   endif()
 endif()
 
 if(NOT HTSLIB_FOUND)
   foreach(p "$ENV{HOME}/01.Software/samtools-1.23" "$ENV{HOME}/01.Software/htslib-1.23" /usr/local /usr)
     if(EXISTS "${p}/include/htslib/hts.h")
-      if(EXISTS "${p}/lib/libhts.a")
-        set(HTSLIB_INCLUDE_DIRS "${p}/include")
-        set(HTSLIB_LINK_LIBRARIES "${p}/lib/libhts.a")
+      _pld2_find_htslib_libraries("${p}" _hts_static _hts_shared)
+      set(HTSLIB_INCLUDE_DIRS "${p}/include")
+      if(HTSLIB_PREFER_STATIC AND _hts_static)
+        set(HTSLIB_LINK_LIBRARIES "${_hts_static}")
         set(HTSLIB_FOUND TRUE)
         set(HTSLIB_IS_STATIC TRUE)
-        break()
-      elseif(EXISTS "${p}/lib/libhts.so")
-        set(HTSLIB_INCLUDE_DIRS "${p}/include")
-        set(HTSLIB_LINK_LIBRARIES "${p}/lib/libhts.so")
-        set(HTSLIB_LINK_DIRS "${p}/lib")
+      elseif(_hts_shared)
+        set(HTSLIB_LINK_LIBRARIES "${_hts_shared}")
+        get_filename_component(_hts_libdir "${_hts_shared}" DIRECTORY)
+        set(HTSLIB_LINK_DIRS "${_hts_libdir}")
         set(HTSLIB_FOUND TRUE)
+      elseif(_hts_static)
+        set(HTSLIB_LINK_LIBRARIES "${_hts_static}")
+        set(HTSLIB_FOUND TRUE)
+        set(HTSLIB_IS_STATIC TRUE)
+      endif()
+      if(HTSLIB_FOUND)
         break()
       endif()
     endif()
@@ -92,6 +184,31 @@ if(NOT HTSLIB_FOUND)
     "  htslib is typically installed via: samtools/htslib source build, Homebrew, apt, or conda.")
 endif()
 
+# htslib version. The check reads the HTS_VERSION macro from the header, so it
+# neither links nor runs anything.
+#   < 1.16  the fast path needs tbx_seqnames(), which does not exist yet
+#   < 1.18  it works, but 1.18 and newer are noticeably faster
+set(CMAKE_REQUIRED_INCLUDES ${HTSLIB_INCLUDE_DIRS})
+check_cxx_source_compiles("#include <htslib/hts.h>
+#if !defined(HTS_VERSION) || HTS_VERSION < 101600
+#error htslib older than 1.16
+#endif
+int main(){return 0;}" HTSLIB_GE_116)
+check_cxx_source_compiles("#include <htslib/hts.h>
+#if !defined(HTS_VERSION) || HTS_VERSION < 101800
+#error htslib older than 1.18
+#endif
+int main(){return 0;}" HTSLIB_GE_118)
+unset(CMAKE_REQUIRED_INCLUDES)
+if(NOT HTSLIB_GE_116)
+  message(FATAL_ERROR
+    "htslib 1.16 or newer is required (the fast path uses tbx_seqnames()).\n"
+    "  Found an older one; install a newer htslib, or point the build at one with\n"
+    "    cmake -S . -B build -DHTSLIB_ROOT=<your-htslib-prefix>")
+elseif(NOT HTSLIB_GE_118)
+  message(STATUS "htslib is older than 1.18: it works, but 1.18 and newer are faster")
+endif()
+
 message(STATUS "htslib include: ${HTSLIB_INCLUDE_DIRS}")
 message(STATUS "htslib lib    : ${HTSLIB_LINK_LIBRARIES}")
 
@@ -101,7 +218,6 @@ find_package(Threads REQUIRED)
 # Bundle the C++ runtime so the binary also runs on hosts whose system
 # libstdc++ is older than the build compiler's (devtoolset-style trees).
 # Only add -static-libstdc++ if the static library is available.
-include(CheckCXXSourceCompiles)
 set(CMAKE_REQUIRED_FLAGS "-static-libstdc++")
 check_cxx_source_compiles("int main(){return 0;}" HAVE_STATIC_LIBSTDCXX)
 unset(CMAKE_REQUIRED_FLAGS)
@@ -125,6 +241,7 @@ add_executable(PopLDdecay2
   src/subpop.cpp
   src/vcf_reader.cpp
   src/genotype_reader.cpp
+  src/plink_reader.cpp
   src/ldkernel.cpp
   src/ldwriter.cpp
   src/output.cpp
@@ -148,7 +265,7 @@ if(ENABLE_LTO)
   endif()
 endif()
 
-if(HTSLIB_IS_STATIC AND HTSLIB_PREFER_STATIC)
+if(HTSLIB_IS_STATIC)
   if(NOT HTSLIB_STATIC_DEPS)
     # Probe the libraries htslib builds commonly reference and link only the
     # ones actually present (by full path, so no -L juggling and missing
@@ -190,7 +307,7 @@ else()
   if(HTSLIB_LINK_DIRS)
     set_target_properties(PopLDdecay2 PROPERTIES
       INSTALL_RPATH "${HTSLIB_LINK_DIRS}"
-      BUILD_RPATH "${HTSLIB_LINK_DIRS}")
+      BUILD_WITH_INSTALL_RPATH TRUE)
   endif()
 endif()
 
@@ -204,5 +321,18 @@ install(PROGRAMS
   bin/Plot_OnePop.pl
   bin/Plot_MultiPop.pl
   DESTINATION bin)
-install(FILES scripts/plink2genotype.pl
+install(FILES bin/mis/plink2genotype.pl
   DESTINATION bin/mis)
+
+# ---------------- tests ----------------
+# A standard entry point for the regression gate: `ctest` in the build
+# directory runs the same script CI runs. The golden comparison against
+# PopLDdecay 3.45 is NOT wired in here: 3.45 is not redistributable, so it is
+# only present on an author's machine (RunTest/06.Verify/golden_diff.sh).
+enable_testing()
+add_test(verify bash ${CMAKE_CURRENT_SOURCE_DIR}/RunTest/06.Verify/step1_checkOutput.sh)
+# The script defaults to bin/PopLDdecay2 (where make.sh puts the binary); in a
+# cmake build tree the binary under test is the one just built, so point the
+# test at it explicitly.
+set_tests_properties(verify PROPERTIES
+                     ENVIRONMENT "NEW=${CMAKE_CURRENT_BINARY_DIR}/PopLDdecay2")
